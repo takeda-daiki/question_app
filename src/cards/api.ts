@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 export type Card = { id: string; title: string; created_at: string };
 
 export type NewCardDetails = {
+  status?: "unresolved" | "resolved";
   importance?: number | null;
   effort?: "low" | "medium" | "high" | null;
   body?: string | null;
@@ -19,6 +20,10 @@ export async function addCard(
 ): Promise<Card> {
   const value = title.trim();
   if (!value) throw new Error("タイトルを入力してください。");
+
+  const status = details?.status ?? "unresolved";
+  const resolvedAt = status === "resolved" ? new Date().toISOString() : null;
+
   const { data, error } = await supabase!
     .from("qm_cards")
     .insert({
@@ -28,6 +33,8 @@ export async function addCard(
       ...(areaId ? { area_id: areaId, field_id: fieldId } : {}),
       ...(details
         ? {
+            status,
+            resolved_at: resolvedAt,
             importance: details.importance ?? null,
             effort: details.effort ?? null,
             body: details.body?.trim() || null,
@@ -37,7 +44,9 @@ export async function addCard(
     })
     .select("id,title,created_at")
     .single();
+
   if (!error) return data;
+
   // A response can be lost after an insert succeeds. Reuse the attempt ID on retry.
   if (error.code === "23505") {
     const existing = await supabase!
@@ -48,5 +57,6 @@ export async function addCard(
       .single();
     if (!existing.error) return existing.data;
   }
+
   throw error;
 }

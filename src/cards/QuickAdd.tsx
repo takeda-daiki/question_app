@@ -3,6 +3,11 @@ import { addCard } from "./api";
 import { ClassificationFields } from "./ClassificationFields";
 import { InlineCreate } from "../components/InlineCreate";
 import { Markdown } from "../components/Markdown";
+import {
+  cardImageMarkdown,
+  deleteCardImages,
+  uploadCardImage,
+} from "../images/storage";
 import { ensureNamed, setTag } from "../data/repository";
 import type { Notebook, Tag } from "../data/types";
 
@@ -32,20 +37,25 @@ export function QuickAdd({
   const [openAfterSave, setOpenAfterSave] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [selectedArea, setArea] = useState(areaId);
-  const [selectedField, setField] = useState(fieldId);
+  const [selectedArea, setArea] = useState<string | null>(areaId);
+  const [selectedField, setField] = useState<string | null>(fieldId);
   const [selectedTags, setTags] = useState<string[]>([]);
   const [createdTags, setCreatedTags] = useState<Tag[]>([]);
+  const [status, setStatus] = useState<"unresolved" | "resolved">("unresolved");
   const [importance, setImportance] = useState<number | null>(null);
   const [effort, setEffort] = useState<"low" | "medium" | "high" | null>(null);
   const [body, setBody] = useState("");
   const [conclusion, setConclusion] = useState("");
   const [creating, setCreating] = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [cardCreated, setCardCreated] = useState(false);
   const savedId = useRef<string | null>(null);
+
   const tags = [
-    ...new Map([...data.tags, ...createdTags].map((t) => [t.id, t])).values(),
+    ...new Map([...data.tags, ...createdTags].map((tag) => [tag.id, tag])).values(),
   ];
+
   const dialog = useRef<HTMLDialogElement>(null);
   const lock = useRef(false);
   const attempt = useRef<{ id: string; title: string } | null>(null);
@@ -65,21 +75,63 @@ export function QuickAdd({
     return () => window.removeEventListener("beforeunload", warn);
   }, [title, body, conclusion, detailed]);
 
-  function requestClose() {
+  async function requestClose() {
     const hasInput =
-      title.trim() ||
+      Boolean(title.trim()) ||
       (detailed &&
-        (body.trim() ||
-          conclusion.trim() ||
+        (Boolean(body.trim()) ||
+          Boolean(conclusion.trim()) ||
+          status !== "unresolved" ||
           importance !== null ||
           effort !== null ||
           selectedTags.length > 0));
+
     if (
-      !busy &&
-      !creating &&
-      (!hasInput || window.confirm("入力中の内容を破棄して閉じますか？"))
-    )
-      close();
+      busy ||
+      creating ||
+      imageBusy ||
+      (hasInput && !window.confirm("入力中の内容を破棄して閉じますか？"))
+    ) {
+      return;
+    }
+
+    if (!cardCreated && uploadedImages.length) {
+      try {
+        await deleteCardImages(uploadedImages);
+      } catch {
+        // 保存前に閉じる場合の画像掃除失敗だけで画面を閉じられなくしない。
+      }
+    }
+    close();
+  }
+
+  async function addImage(target: "body" | "conclusion", file: File) {
+    if (!detailed || cardCreated) return;
+
+    setImageBusy(true);
+    setError("");
+    try {
+      const id = attempt.current?.id ?? crypto.randomUUID();
+      if (!attempt.current) attempt.current = { id, title: title.trim() };
+
+      const path = await uploadCardImage(userId, id, file);
+      setUploadedImages((prev) => [...prev, path]);
+
+      const markdown = cardImageMarkdown(path, file.name);
+      const append = (current: string) =>
+        `${current}${current && !current.endsWith("\n") ? "\n" : ""}${markdown}\n`;
+
+      if (target === "body") setBody(append);
+      else setConclusion(append);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "画像のアップロードに失敗しました。",
+      );
+    } finally {
+      setImageBusy(false);
+    }
   }
 
   const classification = (
@@ -90,26 +142,27 @@ export function QuickAdd({
           userId={userId}
           areaId={selectedArea}
           fieldId={selectedField}
-          change={(a, f) => {
-            setArea(a);
-            setField(f);
+          change={(nextArea: string | null, nextField: string | null) => {
+            setArea(nextArea);
+            setField(nextField);
           }}
-          disabled={busy || creating || cardCreated}
+          disabled={busy || creating || imageBusy || cardCreated}
           onBusyChange={setCreating}
           refresh={refresh}
         />
       </div>
+
       <h3>タグ</h3>
       <div className="chips">
-        {tags.map((tag) => (
+        {tags.map((tag: Tag) => (
           <label className="tag-choice" key={tag.id}>
             <input
               type="checkbox"
-              disabled={busy || creating || cardCreated}
+              disabled={busy || creating || imageBusy || cardCreated}
               checked={selectedTags.includes(tag.id)}
-              onChange={(e) =>
+              onChange={(event) =>
                 setTags((prev) =>
-                  e.target.checked
+                  event.target.checked
                     ? [...prev, tag.id]
                     : prev.filter((id) => id !== tag.id),
                 )
@@ -119,9 +172,10 @@ export function QuickAdd({
           </label>
         ))}
       </div>
+
       <InlineCreate
         label="タグ"
-        disabled={busy || creating || cardCreated}
+        disabled={busy || creating || imageBusy || cardCreated}
         onBusyChange={setCreating}
         create={async (name) => {
           const tag = (await ensureNamed(userId, "tags", name)) as Tag;
@@ -137,21 +191,27 @@ export function QuickAdd({
     <dialog
       ref={dialog}
       className={detailed ? "detail-dialog add-detail-dialog" : undefined}
-      onCancel={(e) => {
-        e.preventDefault();
-        requestClose();
+      onCancel={(event) => {
+        event.preventDefault();
+        void requestClose();
       }}
     >
       <form
-        onSubmit={async (e) => {
-          e.preventDefault();
-          if (lock.current || creating || !title.trim()) return;
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (lock.current || creating || imageBusy || !title.trim()) return;
+
           lock.current = true;
           setBusy(true);
           setError("");
           const clean = title.trim();
-          if (!attempt.current || attempt.current.title !== clean)
+
+          if (!attempt.current) {
             attempt.current = { id: crypto.randomUUID(), title: clean };
+          } else {
+            attempt.current.title = clean;
+          }
+
           try {
             const card = savedId.current
               ? { id: savedId.current }
@@ -162,13 +222,17 @@ export function QuickAdd({
                   selectedArea,
                   selectedField,
                   detailed
-                    ? { importance, effort, body, conclusion }
+                    ? { status, importance, effort, body, conclusion }
                     : undefined,
                 );
+
             savedId.current = card.id;
             setCardCreated(true);
-            for (const tagId of selectedTags)
+
+            for (const tagId of selectedTags) {
               await setTag(userId, card.id, tagId, true);
+            }
+
             await saved(card.id, detailed ? false : openAfterSave);
           } catch {
             setError(
@@ -183,12 +247,15 @@ export function QuickAdd({
         }}
       >
         <span className="eyebrow">A NEW QUESTION</span>
-        <h2>{detailed ? "詳細を設定して疑問を追加" : "いま、気になっていることは？"}</h2>
+        <h2>
+          {detailed ? "詳細を設定して疑問を追加" : "いま、気になっていることは？"}
+        </h2>
         <p className="muted">
           {detailed
             ? "整理に必要な情報をここで設定してから保存できます。タイトル以外は任意です。"
             : "まずはタイトルだけ。短い言葉で大丈夫。"}
         </p>
+
         <label htmlFor={detailed ? "detailed-card-title" : "card-title"}>
           疑問のタイトル
         </label>
@@ -196,8 +263,8 @@ export function QuickAdd({
           autoFocus
           id={detailed ? "detailed-card-title" : "card-title"}
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          disabled={busy || creating || cardCreated}
+          onChange={(event) => setTitle(event.target.value)}
+          disabled={busy || creating || imageBusy || cardCreated}
           required
           placeholder="例：ベイズ推定とは？"
         />
@@ -205,14 +272,31 @@ export function QuickAdd({
         {detailed ? (
           <div className="detailed-add-fields">
             {classification}
+
             <div className="form-grid">
+              <label>
+                状態
+                <select
+                  value={status}
+                  disabled={busy || creating || imageBusy || cardCreated}
+                  onChange={(event) =>
+                    setStatus(event.target.value as "unresolved" | "resolved")
+                  }
+                >
+                  <option value="unresolved">疑問</option>
+                  <option value="resolved">解決済み</option>
+                </select>
+              </label>
+
               <label>
                 重要度
                 <select
                   value={importance ?? ""}
-                  disabled={busy || creating || cardCreated}
-                  onChange={(e) =>
-                    setImportance(e.target.value ? Number(e.target.value) : null)
+                  disabled={busy || creating || imageBusy || cardCreated}
+                  onChange={(event) =>
+                    setImportance(
+                      event.target.value ? Number(event.target.value) : null,
+                    )
                   }
                 >
                   <option value="">未設定</option>
@@ -221,14 +305,15 @@ export function QuickAdd({
                   <option value="1">★</option>
                 </select>
               </label>
+
               <label>
                 労力
                 <select
                   value={effort ?? ""}
-                  disabled={busy || creating || cardCreated}
-                  onChange={(e) =>
+                  disabled={busy || creating || imageBusy || cardCreated}
+                  onChange={(event) =>
                     setEffort(
-                      (e.target.value || null) as
+                      (event.target.value || null) as
                         | "low"
                         | "medium"
                         | "high"
@@ -243,34 +328,72 @@ export function QuickAdd({
                 </select>
               </label>
             </div>
+
             <section>
-              <label htmlFor="detailed-body">本文</label>
+              <label htmlFor="detailed-body">本文（問題側）</label>
               <div className="editor-grid">
-                <textarea
-                  id="detailed-body"
-                  rows={7}
-                  value={body}
-                  disabled={busy || creating || cardCreated}
-                  onChange={(e) => setBody(e.target.value)}
-                  placeholder="Markdownと $数式$ が使えます"
-                />
+                <div>
+                  <textarea
+                    id="detailed-body"
+                    rows={8}
+                    value={body}
+                    disabled={busy || creating || imageBusy || cardCreated}
+                    onChange={(event) => setBody(event.target.value)}
+                    placeholder={"Markdown、$数式$、$$別行数式$$、\\begin{align}...\\end{align} が使えます"}
+                  />
+                  <div className="image-upload-row">
+                    <label className="image-upload-button">
+                      写真を追加
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        disabled={busy || creating || imageBusy || cardCreated}
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0];
+                          if (file) void addImage("body", file);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                    {imageBusy && <span className="muted">画像を送信中…</span>}
+                  </div>
+                </div>
                 <div className="preview">
                   <small>プレビュー</small>
                   <Markdown text={body} />
                 </div>
               </div>
             </section>
+
             <section>
-              <label htmlFor="detailed-conclusion">結論</label>
+              <label htmlFor="detailed-conclusion">結論（解答側）</label>
               <div className="editor-grid">
-                <textarea
-                  id="detailed-conclusion"
-                  rows={5}
-                  value={conclusion}
-                  disabled={busy || creating || cardCreated}
-                  onChange={(e) => setConclusion(e.target.value)}
-                  placeholder="Markdownと $数式$ が使えます"
-                />
+                <div>
+                  <textarea
+                    id="detailed-conclusion"
+                    rows={8}
+                    value={conclusion}
+                    disabled={busy || creating || imageBusy || cardCreated}
+                    onChange={(event) => setConclusion(event.target.value)}
+                    placeholder={"Markdown、$数式$、$$別行数式$$、\\begin{align}...\\end{align} が使えます"}
+                  />
+                  <div className="image-upload-row">
+                    <label className="image-upload-button">
+                      写真を追加
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        disabled={busy || creating || imageBusy || cardCreated}
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0];
+                          if (file) void addImage("conclusion", file);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                    {imageBusy && <span className="muted">画像を送信中…</span>}
+                  </div>
+                </div>
                 <div className="preview">
                   <small>プレビュー</small>
                   <Markdown text={conclusion} />
@@ -290,11 +413,12 @@ export function QuickAdd({
               </p>
               {classification}
             </details>
+
             <label className="tag-choice">
               <input
                 type="checkbox"
                 checked={openAfterSave}
-                onChange={(e) => setOpenAfterSave(e.target.checked)}
+                onChange={(event) => setOpenAfterSave(event.target.checked)}
               />
               保存後に詳細を追加
             </label>
@@ -306,18 +430,19 @@ export function QuickAdd({
             {error}
           </p>
         )}
+
         <div className="dialog-actions">
           <button
             type="button"
             className="secondary"
-            disabled={busy || creating}
-            onClick={requestClose}
+            disabled={busy || creating || imageBusy}
+            onClick={() => void requestClose()}
           >
             閉じる
           </button>
           <button
             className="primary"
-            disabled={busy || creating || !title.trim()}
+            disabled={busy || creating || imageBusy || !title.trim()}
           >
             {busy ? "保存中…" : "保存する"}
           </button>
