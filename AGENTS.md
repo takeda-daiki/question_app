@@ -174,3 +174,14 @@ A — B
 という順序を基本としてください。
 
 ユーザーから小さな改善を依頼された場合、不必要にアプリ全体を書き換えないでください。
+
+## 13. Step 6の実装と確認方法
+
+- React / TypeScript / Viteを使用。認証は `src/auth/`、保存処理は `src/cards/api.ts`、接続設定は `src/lib/supabase.ts`。
+- `pnpm install --frozen-lockfile` で依存関係を復元し、`pnpm build` で型とビルドを確認する。
+- 認証・保存・一覧に変更があれば `pnpm test` を実行する。初回のみ `pnpm exec playwright install chromium` が必要。
+- ブラウザーテストは架空の接続先と模擬通信を使う。実際のRLSが正しいという証明にはならない。
+- `.env.local` をコミットしない。ブラウザー向けの `VITE_` 変数に秘密鍵を置かない。
+- 既存Supabaseプロジェクトを別アプリと共有している。qm_以外のテーブル、共通の認証設定、Site URLを不用意に変更しない。
+- データベース変更が必要な場合はSQLを履歴に残し、対象と既存データへの影響を説明する。Step 6には変更用SQLはなく、`sql/check-step5.sql` は読み取り専用。
+- 動作範囲と未実装機能は `docs/STEP6.md` と `SPEC.md` の実装状況に記録する。
