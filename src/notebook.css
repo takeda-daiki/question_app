@@ -380,3 +380,50 @@ textarea:focus {
     padding-bottom: 90px;
   }
 }
+
+/* 疑問一覧からの詳細追加 */
+.list-create-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 4px 0 18px;
+  padding: 14px 0 18px;
+  border-bottom: 1px solid #dce4d8;
+}
+
+.list-create-actions .muted {
+  margin: 0;
+}
+
+.graph-filter {
+  max-width: 420px;
+  margin: 8px 0 18px;
+}
+
+.add-detail-dialog {
+  width: min(900px, calc(100% - 32px));
+}
+
+.detailed-add-fields {
+  margin-top: 18px;
+}
+
+.detailed-add-fields textarea {
+  min-height: 120px;
+}
+
+@media (max-width: 700px) {
+  .list-create-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .list-create-actions button {
+    width: 100%;
+  }
+
+  .add-detail-dialog {
+    width: calc(100% - 20px);
+  }
+}

@@ -32,6 +32,7 @@ export function NotebookApp({ userId }: { userId: string }) {
   const [filters, setFilters] = useState<Filters>(initialFilters);
   const [view, setView] = useState<View>("cards");
   const [quick, setQuick] = useState(false);
+  const [detailedAdd, setDetailedAdd] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [limit, setLimit] = useState(50);
@@ -75,6 +76,16 @@ export function NotebookApp({ userId }: { userId: string }) {
   }
   function patch(values: Partial<Filters>) {
     setFilters({ ...filters, ...values });
+    setLimit(50);
+  }
+  function showCardsForArea(area: string) {
+    setView("cards");
+    setFilters({
+      ...initialFilters,
+      status: "unresolved",
+      area,
+      field: "",
+    });
     setLimit(50);
   }
   const visible = useMemo(
@@ -147,10 +158,7 @@ export function NotebookApp({ userId }: { userId: string }) {
         <h3>領域</h3>
         <button
           className="text-button"
-          onClick={() => {
-            setView("cards");
-            patch({ area: "", field: "" });
-          }}
+          onClick={() => showCardsForArea("")}
         >
           すべての領域
         </button>
@@ -158,10 +166,7 @@ export function NotebookApp({ userId }: { userId: string }) {
           <button
             className="area-nav"
             key={a.id}
-            onClick={() => {
-              setView("cards");
-              patch({ area: a.id, field: "" });
-            }}
+            onClick={() => showCardsForArea(a.id)}
           >
             <span
               style={{
@@ -175,10 +180,7 @@ export function NotebookApp({ userId }: { userId: string }) {
         ))}
         <button
           className="text-button"
-          onClick={() => {
-            setView("cards");
-            patch({ area: "none", field: "" });
-          }}
+          onClick={() => showCardsForArea("none")}
         >
           未分類
         </button>
@@ -191,7 +193,7 @@ export function NotebookApp({ userId }: { userId: string }) {
             <p className="muted">問いを育てて、自分の知識に。</p>
           </div>
           <button className="primary add-button" onClick={() => setQuick(true)}>
-            ＋ 疑問を追加
+            ＋ クイック追加
           </button>
         </div>
         <p className="status-line" role="status">
@@ -208,109 +210,145 @@ export function NotebookApp({ userId }: { userId: string }) {
             </button>
           </div>
         )}
+        {view === "cards" && (
+          <div className="list-create-actions">
+            <button className="secondary" onClick={() => setDetailedAdd(true)}>
+              ＋ 詳細を設定して疑問を追加
+            </button>
+            <span className="muted">
+              重要度・労力・分類・タグ・本文・結論を設定して登録できます。
+            </span>
+          </div>
+        )}
         {view === "settings" ? (
           <Settings data={data} userId={userId} refresh={refresh} />
         ) : (
           <>
-            <div className="tabs" aria-label="状態の切り替え">
-              {[
-                ["unresolved", "疑問"],
-                ["resolved", "解決済み"],
-                ["all", "すべて"],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  aria-pressed={filters.status === value}
-                  onClick={() => patch({ status: value })}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="filters">
-              <label className="search-input">
-                キーワード
-                <input
-                  type="search"
-                  value={filters.query}
-                  onChange={(e) => patch({ query: e.target.value })}
-                  placeholder="タイトル・本文・結論・分類・タグから検索"
-                />
-              </label>
-              <label>
-                領域
-                <select
-                  value={filters.area}
-                  onChange={(e) => patch({ area: e.target.value, field: "" })}
-                >
-                  <option value="">すべての領域</option>
-                  <option value="none">未分類</option>
-                  {data.areas.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                分野
-                <select
-                  value={filters.field}
-                  onChange={(e) => patch({ field: e.target.value })}
-                >
-                  <option value="">すべての分野</option>
-                  {data.fields
-                    .filter((f) => !filters.area || f.area_id === filters.area)
-                    .map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
+            {(view === "cards" || view === "search" || view === "graph") && (
+              <div className="tabs" aria-label="状態の切り替え">
+                {[
+                  ["unresolved", "疑問"],
+                  ["resolved", "解決済み"],
+                  ["all", "すべて"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    aria-pressed={filters.status === value}
+                    onClick={() => patch({ status: value })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {view === "search" && (
+              <div className="filters">
+                <label className="search-input">
+                  キーワード
+                  <input
+                    type="search"
+                    value={filters.query}
+                    onChange={(e) => patch({ query: e.target.value })}
+                    placeholder="タイトル・本文・結論・分類・タグから検索"
+                  />
+                </label>
+                <label>
+                  領域
+                  <select
+                    value={filters.area}
+                    onChange={(e) => patch({ area: e.target.value, field: "" })}
+                  >
+                    <option value="">すべての領域</option>
+                    <option value="none">未分類</option>
+                    {data.areas.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
                       </option>
                     ))}
-                </select>
-              </label>
-              <label>
-                重要度
-                <select
-                  value={filters.importance}
-                  onChange={(e) => patch({ importance: e.target.value })}
-                >
-                  <option value="">すべて</option>
-                  {[3, 2, 1].map((n) => (
-                    <option key={n} value={n}>
-                      {"★".repeat(n)}
-                    </option>
-                  ))}
-                  <option value="none">未整理</option>
-                </select>
-              </label>
-              <label>
-                労力
-                <select
-                  value={filters.effort}
-                  onChange={(e) => patch({ effort: e.target.value })}
-                >
-                  <option value="">すべて</option>
-                  <option value="low">低</option>
-                  <option value="medium">中</option>
-                  <option value="high">高</option>
-                  <option value="none">未設定</option>
-                </select>
-              </label>
-              <label>
-                タグ
-                <select
-                  value={filters.tag}
-                  onChange={(e) => patch({ tag: e.target.value })}
-                >
-                  <option value="">すべて</option>
-                  {data.tags.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+                  </select>
+                </label>
+                <label>
+                  分野
+                  <select
+                    value={filters.field}
+                    onChange={(e) => patch({ field: e.target.value })}
+                  >
+                    <option value="">すべての分野</option>
+                    {data.fields
+                      .filter((f) =>
+                        !filters.area || filters.area === "none"
+                          ? true
+                          : f.area_id === filters.area,
+                      )
+                      .map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
+                  重要度
+                  <select
+                    value={filters.importance}
+                    onChange={(e) => patch({ importance: e.target.value })}
+                  >
+                    <option value="">すべて</option>
+                    {[3, 2, 1].map((n) => (
+                      <option key={n} value={n}>
+                        {"★".repeat(n)}
+                      </option>
+                    ))}
+                    <option value="none">未整理</option>
+                  </select>
+                </label>
+                <label>
+                  労力
+                  <select
+                    value={filters.effort}
+                    onChange={(e) => patch({ effort: e.target.value })}
+                  >
+                    <option value="">すべて</option>
+                    <option value="low">低</option>
+                    <option value="medium">中</option>
+                    <option value="high">高</option>
+                    <option value="none">未設定</option>
+                  </select>
+                </label>
+                <label>
+                  タグ
+                  <select
+                    value={filters.tag}
+                    onChange={(e) => patch({ tag: e.target.value })}
+                  >
+                    <option value="">すべて</option>
+                    {data.tags.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+            {view === "graph" && (
+              <div className="graph-filter">
+                <label>
+                  表示する領域
+                  <select
+                    value={filters.area}
+                    onChange={(e) => patch({ area: e.target.value, field: "" })}
+                  >
+                    <option value="">領域を選択</option>
+                    {data.areas.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
             <div className="list-toolbar">
               <span>
                 {visible.length}件{view === "trash" ? "・ゴミ箱" : ""}
@@ -347,7 +385,9 @@ export function NotebookApp({ userId }: { userId: string }) {
                     <p className="muted">
                       {view === "trash"
                         ? "削除したカードはこちらから復元できます。"
-                        : "タイトルだけで記録できます。検索条件も変更してみてください。"}
+                        : view === "search"
+                          ? "検索条件を変更してみてください。"
+                          : "タイトルだけのクイック追加、または詳細設定付きの追加ができます。"}
                     </p>
                   </div>
                 )}
@@ -396,7 +436,15 @@ export function NotebookApp({ userId }: { userId: string }) {
                                 <button
                                   key={ct.tag_id}
                                   className="chip"
-                                  onClick={() => patch({ tag: ct.tag_id })}
+                                  onClick={() => {
+                                    setView("search");
+                                    setFilters({
+                                      ...initialFilters,
+                                      status: "all",
+                                      tag: ct.tag_id,
+                                    });
+                                    setLimit(50);
+                                  }}
                                 >
                                   {
                                     data.tags.find((t) => t.id === ct.tag_id)
@@ -481,6 +529,25 @@ export function NotebookApp({ userId }: { userId: string }) {
             setQuick(false);
             setNotice("保存しました。");
             if (details) setSelected(id);
+          }}
+        />
+      )}
+      {detailedAdd && (
+        <QuickAdd
+          mode="detailed"
+          userId={userId}
+          data={data}
+          refresh={refresh}
+          areaId={
+            data.fields.find((field) => field.id === filters.field)?.area_id ??
+            (filters.area && filters.area !== "none" ? filters.area : null)
+          }
+          fieldId={filters.field || null}
+          close={() => setDetailedAdd(false)}
+          saved={async () => {
+            await refresh();
+            setDetailedAdd(false);
+            setNotice("詳細を設定して保存しました。");
           }}
         />
       )}
