@@ -6,6 +6,8 @@
 
 **最初の起動とSupabase接続は [Step 6の手順](docs/STEP6.md) を参照してください。**
 
+GitHub Pagesへの公開は [公開手順](docs/GITHUB-PAGES.md) を参照してください。
+
 技術構成：React / TypeScript / Vite / Supabase。画面・認証・保存処理を分けています。依存関係は `pnpm-lock.yaml` で固定しています。
 
 日常・学習・研究などで生じた「疑問」を記録し、整理し、解決した内容を知識として蓄積するためのアプリです。
