@@ -100,6 +100,28 @@ export function CardDetail({
     }
   }
 
+  async function saveWithStatus(status: Card["status"]) {
+    await run(async () => {
+      const saved = await updateCard(userId, original, {
+        ...draft,
+        title: draft.title.trim(),
+        status,
+      });
+      setOriginal(saved);
+      setDraft({
+        title: saved.title,
+        body: saved.body ?? "",
+        conclusion: saved.conclusion ?? "",
+        area_id: saved.area_id ?? null,
+        field_id: saved.field_id ?? null,
+        importance: saved.importance ?? null,
+        effort: saved.effort ?? null,
+        status: saved.status ?? "unresolved",
+      });
+      setDirty(false);
+    }, status === "resolved" ? "解決済みにしました。" : "疑問に戻しました。");
+  }
+
   async function addImage(target: "body" | "conclusion", file: File) {
     if (card.deleted_at || imageBusy) return;
 
@@ -127,6 +149,8 @@ export function CardDetail({
     l.card_a_id === card.id ? l.card_b_id : l.card_a_id,
   );
 
+  const isResolved = (draft.status ?? original.status) === "resolved";
+
   return (
     <dialog
       className="detail-dialog"
@@ -138,15 +162,30 @@ export function CardDetail({
     >
       <div className="detail-top">
         <span className="eyebrow">QUESTION DETAILS</span>
-        <button
-          className="secondary"
-          disabled={busy}
-          onClick={() => {
-            if (mayLeave()) close();
-          }}
-        >
-          閉じる
-        </button>
+        <div className="detail-top-actions">
+          {!card.deleted_at && (
+            <button
+              type="button"
+              className={isResolved ? "secondary" : "primary"}
+              disabled={busy || !draft.title.trim()}
+              onClick={() =>
+                void saveWithStatus(isResolved ? "unresolved" : "resolved")
+              }
+            >
+              {isResolved ? "疑問に戻す" : "解決済みにする"}
+            </button>
+          )}
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={() => {
+              if (mayLeave()) close();
+            }}
+          >
+            閉じる
+          </button>
+        </div>
       </div>
 
       <h2>疑問の詳細</h2>
@@ -190,19 +229,6 @@ export function CardDetail({
           />
 
           <div className="form-grid">
-            <label>
-              状態
-              <select
-                value={draft.status}
-                onChange={(e) =>
-                  patch({ status: e.target.value as Card["status"] })
-                }
-              >
-                <option value="unresolved">疑問</option>
-                <option value="resolved">解決済み</option>
-              </select>
-            </label>
-
             <label>
               重要度
               <select

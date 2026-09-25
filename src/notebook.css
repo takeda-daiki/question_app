@@ -413,6 +413,51 @@ textarea:focus {
   min-height: 120px;
 }
 
+/* 写真追加 */
+.image-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.image-upload-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-height: 40px;
+  margin: 0;
+  padding: 8px 13px;
+  border-radius: 8px;
+  background: #edf1e9;
+  color: #294c3e;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.image-upload-button input[type="file"] {
+  display: none;
+}
+
+.markdown-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 12px 0;
+  border-radius: 8px;
+}
+
+/* カード詳細上部の操作ボタン */
+.detail-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 700px) {
   .list-create-actions {
     align-items: stretch;
@@ -425,5 +470,14 @@ textarea:focus {
 
   .add-detail-dialog {
     width: calc(100% - 20px);
+  }
+
+  .detail-top-actions {
+    justify-content: flex-end;
+  }
+
+  .detail-top-actions button {
+    padding: 8px 10px;
+    font-size: 12px;
   }
 }
