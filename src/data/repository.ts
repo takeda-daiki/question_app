@@ -1,5 +1,5 @@
 import { supabase } from "../lib/supabase";
-import type { Card, Notebook } from "./types";
+import type { Area, Card, Field, Notebook, Tag } from "./types";
 
 // Read every page, including the trash. Filters and export must not silently lose rows.
 async function readAll<T>(table: string, userId: string): Promise<T[]> {
@@ -93,6 +93,40 @@ export async function createNamed(
     .from(`qm_${kind}`)
     .insert({ ...extra, user_id: userId, name: name.trim() });
   if (error) throw error;
+}
+
+// Recover an existing name after a lost response or concurrent creation.
+export async function ensureNamed(
+  userId: string,
+  kind: "areas" | "fields" | "tags",
+  name: string,
+  areaId?: string,
+): Promise<Area | Field | Tag> {
+  const clean = name.trim();
+  if (!clean) throw new Error("名前を入力してください。");
+  if (kind === "fields" && !areaId)
+    throw new Error("先に領域を選択してください。");
+  const { data, error } = await supabase!
+    .from(`qm_${kind}`)
+    .insert({
+      user_id: userId,
+      name: clean,
+      ...(kind === "fields" ? { area_id: areaId } : {}),
+    })
+    .select("*")
+    .single();
+  if (!error) return data;
+  if (error.code === "23505") {
+    let query = supabase!
+      .from(`qm_${kind}`)
+      .select("*")
+      .eq("user_id", userId)
+      .eq("name", clean);
+    if (kind === "fields") query = query.eq("area_id", areaId!);
+    const existing = await query.single();
+    if (!existing.error) return existing.data;
+  }
+  throw error;
 }
 export async function editNamed(
   userId: string,

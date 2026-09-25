@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Card, Notebook } from "../data/types";
 import {
   addLink,
+  ensureNamed,
   failure,
   removeLink,
   setTag,
@@ -9,6 +10,8 @@ import {
   type CardChanges,
 } from "../data/repository";
 import { Markdown } from "../components/Markdown";
+import { ClassificationFields } from "./ClassificationFields";
+import { InlineCreate } from "../components/InlineCreate";
 
 export function CardDetail({
   card,
@@ -37,7 +40,9 @@ export function CardDetail({
     status: card.status ?? "unresolved",
   });
   const [dirty, setDirty] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [saving, setBusy] = useState(false);
+  const [classifying, setClassifying] = useState(false);
+  const busy = saving || classifying;
   const lock = useRef(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -183,39 +188,16 @@ export function CardDetail({
                 <option value="high">高</option>
               </select>
             </label>
-            <label>
-              領域
-              <select
-                value={draft.area_id ?? ""}
-                onChange={(e) =>
-                  patch({ area_id: e.target.value || null, field_id: null })
-                }
-              >
-                <option value="">未分類</option>
-                {data.areas.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              分野
-              <select
-                value={draft.field_id ?? ""}
-                disabled={!draft.area_id}
-                onChange={(e) => patch({ field_id: e.target.value || null })}
-              >
-                <option value="">未設定</option>
-                {data.fields
-                  .filter((f) => f.area_id === draft.area_id)
-                  .map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
+            <ClassificationFields
+              data={data}
+              userId={userId}
+              areaId={draft.area_id}
+              fieldId={draft.field_id}
+              change={(area_id, field_id) => patch({ area_id, field_id })}
+              disabled={busy || Boolean(card.deleted_at)}
+              onBusyChange={setClassifying}
+              refresh={refresh}
+            />
           </div>
           {(["body", "conclusion"] as const).map((key) => (
             <section key={key}>
@@ -278,9 +260,17 @@ export function CardDetail({
             </label>
           ))}
         </div>
-        {!data.tags.length && (
-          <p className="muted">設定画面でタグを作成できます。</p>
-        )}
+        <InlineCreate
+          label="タグ"
+          disabled={busy || Boolean(card.deleted_at)}
+          onBusyChange={setClassifying}
+          create={async (name) => {
+            const tag = await ensureNamed(userId, "tags", name);
+            await setTag(userId, card.id, tag.id, true);
+            await refresh();
+            setNotice("タグを作成して設定しました。");
+          }}
+        />
         <h3>関連カード</h3>
         {links.map((link) => {
           const other = data.cards.find(

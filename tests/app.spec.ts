@@ -1,5 +1,15 @@
 import { test, expect, type Page } from "@playwright/test";
 
+// All browser tests are local; reject third-party resources rather than fetch them.
+test.beforeEach(async ({ page }) => {
+  await page.route("**/*", (route) => {
+    const host = new URL(route.request().url()).hostname;
+    return host === "127.0.0.1" || host === "test-project.supabase.co"
+      ? route.fallback()
+      : route.abort();
+  });
+});
+
 const userId = "11111111-1111-4111-8111-111111111111";
 const user = {
   id: userId,
@@ -25,6 +35,7 @@ async function mock(
     failLogin?: boolean;
     loseResponse?: boolean;
     failList?: boolean;
+    failTagOnce?: boolean;
   } = {},
 ) {
   const cards: any[] = [];
@@ -39,6 +50,7 @@ async function mock(
   let inserts = 0;
   let loseResponse = options.loseResponse;
   let failList = options.failList;
+  let failTagOnce = options.failTagOnce;
   await page.route("https://test-project.supabase.co/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -72,7 +84,26 @@ async function mock(
         if (table === "qm_cards") inserts++;
         const body = request.postDataJSON();
         expect(body.user_id).toBe(userId);
-        if (body.id && rows.some((card) => card.id === body.id)) {
+        if (table === "qm_card_tags" && failTagOnce) {
+          failTagOnce = false;
+          await route.fulfill({
+            status: 403,
+            json: { message: "test tag failure" },
+          });
+          return;
+        }
+        if (
+          (body.id && rows.some((card) => card.id === body.id)) ||
+          (body.name &&
+            rows.some(
+              (row) => row.name === body.name && row.area_id === body.area_id,
+            )) ||
+          (table === "qm_card_tags" &&
+            rows.some(
+              (row) =>
+                row.card_id === body.card_id && row.tag_id === body.tag_id,
+            ))
+        ) {
           await route.fulfill({
             status: 409,
             json: { code: "23505", message: "duplicate key" },
@@ -129,7 +160,10 @@ async function mock(
           });
           return;
         }
-        if (url.searchParams.has("id")) {
+        if (
+          url.searchParams.has("id") ||
+          request.headers().accept?.includes("vnd.pgrst.object")
+        ) {
           await route.fulfill({ json: rows.find(matches) });
         } else {
           const offset = Number(url.searchParams.get("offset") || 0);
@@ -623,9 +657,140 @@ test("quick add inherits the selected field and its area", async ({
   await page
     .getByRole("button", { name: "光はなぜ曲がる？", exact: true })
     .click();
-  await expect(page.getByRole("dialog").getByLabel("タイトル", { exact: true })).toHaveValue("光はなぜ曲がる？");
+  await expect(
+    page.getByRole("dialog").getByLabel("タイトル", { exact: true }),
+  ).toHaveValue("光はなぜ曲がる？");
   await page.screenshot({
     path: testInfo.outputPath("detail-top.png"),
     fullPage: true,
   });
+});
+
+test("create classifications inline before saving a question", async ({
+  page,
+}, testInfo) => {
+  const backend = await mock(page);
+  await login(page);
+  await page
+    .getByRole("button", { name: "＋ 疑問を追加", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("疑問のタイトル").fill("研究したい疑問");
+  await dialog
+    .getByText("領域・分野・タグを追加（任意）", { exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("button", { name: "＋ 分野を新規作成", exact: true }),
+  ).toBeDisabled();
+  for (const [label, name] of [
+    ["領域", "研究"],
+    ["分野", "統計学"],
+    ["タグ", "論文"],
+  ]) {
+    await dialog
+      .getByRole("button", { name: `＋ ${label}を新規作成`, exact: true })
+      .click();
+    await dialog.getByLabel(`新しい${label}名`, { exact: true }).fill(name);
+    await dialog
+      .getByRole("button", { name: `${label}を作成して選択`, exact: true })
+      .click();
+    await expect(
+      dialog.getByLabel(`新しい${label}名`, { exact: true }),
+    ).toHaveCount(0);
+    await expect(dialog.getByLabel("疑問のタイトル")).toHaveValue(
+      "研究したい疑問",
+    );
+  }
+  expect(backend.cards).toHaveLength(0);
+  await expect(dialog.getByLabel("論文", { exact: true })).toBeChecked();
+  await page.screenshot({
+    path: testInfo.outputPath("inline-create.png"),
+    fullPage: true,
+  });
+  await dialog.getByRole("button", { name: "保存する", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "研究したい疑問", exact: true }),
+  ).toBeVisible();
+  expect(backend.cards[0]).toMatchObject({
+    area_id: backend.tables.qm_areas[0].id,
+    field_id: backend.tables.qm_fields[0].id,
+  });
+  expect(backend.tables.qm_card_tags[0]).toMatchObject({
+    card_id: backend.cards[0].id,
+    tag_id: backend.tables.qm_tags[0].id,
+  });
+});
+
+test("inline creation reuses names and retains the detail draft", async ({
+  page,
+}) => {
+  const backend = await mock(page);
+  seed(backend, "card", "編集する疑問");
+  backend.tables.qm_areas.push({
+    id: "area",
+    user_id: userId,
+    name: "既存領域",
+    sort_order: 0,
+  });
+  await login(page);
+  await page.getByRole("button", { name: "編集する疑問", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("本文", { exact: true }).fill("書きかけの本文");
+  await dialog
+    .getByRole("button", { name: "＋ 領域を新規作成", exact: true })
+    .click();
+  await dialog.getByLabel("新しい領域名", { exact: true }).fill("  既存領域  ");
+  await dialog
+    .getByRole("button", { name: "領域を作成して選択", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("combobox", { name: "領域", exact: true }),
+  ).toHaveValue("area");
+  expect(backend.tables.qm_areas).toHaveLength(1);
+  await dialog
+    .getByRole("button", { name: "＋ タグを新規作成", exact: true })
+    .click();
+  await dialog.getByLabel("新しいタグ名", { exact: true }).fill("新しいタグ");
+  await dialog
+    .getByRole("button", { name: "タグを作成して選択", exact: true })
+    .click();
+  await expect(dialog.getByLabel("新しいタグ", { exact: true })).toBeChecked();
+  await expect(dialog.getByLabel("本文", { exact: true })).toHaveValue(
+    "書きかけの本文",
+  );
+  expect(backend.cards[0].body).toBe("");
+  await dialog.getByRole("button", { name: "変更を保存", exact: true }).click();
+  await expect(
+    dialog.getByText("保存しました。", { exact: true }),
+  ).toBeVisible();
+  expect(backend.cards[0]).toMatchObject({
+    body: "書きかけの本文",
+    area_id: "area",
+  });
+});
+
+test("inline tag save retry does not duplicate the question", async ({
+  page,
+}) => {
+  const backend = await mock(page, { failTagOnce: true });
+  backend.tables.qm_tags.push({ id: "tag", user_id: userId, name: "タグ" });
+  await login(page);
+  await page
+    .getByRole("button", { name: "＋ 疑問を追加", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("疑問のタイトル").fill("一度だけ保存");
+  await dialog
+    .getByText("領域・分野・タグを追加（任意）", { exact: true })
+    .click();
+  await dialog.getByLabel("タグ", { exact: true }).check();
+  await dialog.getByRole("button", { name: "保存する", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("疑問は保存済み");
+  await dialog.getByRole("button", { name: "保存する", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "一度だけ保存", exact: true }),
+  ).toBeVisible();
+  expect(backend.cards).toHaveLength(1);
+  expect(backend.insertCount()).toBe(1);
+  expect(backend.tables.qm_card_tags).toHaveLength(1);
 });
