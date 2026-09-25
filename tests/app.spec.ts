@@ -769,6 +769,58 @@ test("inline creation reuses names and retains the detail draft", async ({
   });
 });
 
+test("create classifications directly from list filters", async ({
+  page,
+}, testInfo) => {
+  const backend = await mock(page);
+  seed(backend, "existing", "既存の疑問");
+  await login(page);
+  const filters = page.locator(".filters");
+  await expect(
+    filters.getByRole("button", { name: "＋ 分野を新規作成", exact: true }),
+  ).toBeDisabled();
+  for (const [label, name, table] of [
+    ["領域", "研究", "qm_areas"],
+    ["分野", "統計", "qm_fields"],
+    ["タグ", "論文", "qm_tags"],
+  ]) {
+    await filters
+      .getByRole("button", { name: `＋ ${label}を新規作成`, exact: true })
+      .click();
+    await filters.getByLabel(`新しい${label}名`, { exact: true }).fill(name);
+    await filters
+      .getByRole("button", { name: `${label}を作成して選択`, exact: true })
+      .click();
+    await expect(
+      filters.getByRole("combobox", { name: label, exact: true }),
+    ).toHaveValue(backend.tables[table][0].id);
+  }
+  expect(backend.tables.qm_fields[0].area_id).toBe(
+    backend.tables.qm_areas[0].id,
+  );
+  expect(backend.cards).toHaveLength(1);
+  expect(backend.cards[0].area_id).toBeNull();
+  expect(backend.tables.qm_card_tags).toHaveLength(0);
+  await filters
+    .getByRole("combobox", { name: "領域", exact: true })
+    .selectOption("none");
+  await expect(
+    filters.getByRole("combobox", { name: "分野", exact: true }),
+  ).toHaveValue("");
+  await expect(
+    filters.getByRole("button", { name: "＋ 分野を新規作成", exact: true }),
+  ).toBeDisabled();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("list-create.png"),
+    fullPage: true,
+  });
+});
+
 test("inline tag save retry does not duplicate the question", async ({
   page,
 }) => {

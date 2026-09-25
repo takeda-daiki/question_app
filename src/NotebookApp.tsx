@@ -17,6 +17,7 @@ import {
 import { filterCards, initialFilters, type Filters } from "./cards/filter";
 import { QuickAdd } from "./cards/QuickAdd";
 import { Settings } from "./settings/Settings";
+import { FilterCreate } from "./components/FilterCreate";
 const Graph = lazy(() =>
   import("./graph/Graph").then((m) => ({ default: m.Graph })),
 );
@@ -74,7 +75,7 @@ export function NotebookApp({ userId }: { userId: string }) {
     setLimit(50);
   }
   function patch(values: Partial<Filters>) {
-    setFilters({ ...filters, ...values });
+    setFilters((current) => ({ ...current, ...values }));
     setLimit(50);
   }
   const visible = useMemo(
@@ -237,37 +238,59 @@ export function NotebookApp({ userId }: { userId: string }) {
                   placeholder="タイトル・本文・結論・分類・タグから検索"
                 />
               </label>
-              <label>
-                領域
-                <select
-                  value={filters.area}
-                  onChange={(e) => patch({ area: e.target.value, field: "" })}
-                >
-                  <option value="">すべての領域</option>
-                  <option value="none">未分類</option>
-                  {data.areas.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                分野
-                <select
-                  value={filters.field}
-                  onChange={(e) => patch({ field: e.target.value })}
-                >
-                  <option value="">すべての分野</option>
-                  {data.fields
-                    .filter((f) => !filters.area || f.area_id === filters.area)
-                    .map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
+              <div>
+                <label>
+                  領域
+                  <select
+                    value={filters.area}
+                    onChange={(e) => patch({ area: e.target.value, field: "" })}
+                  >
+                    <option value="">すべての領域</option>
+                    <option value="none">未分類</option>
+                    {data.areas.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
                       </option>
                     ))}
-                </select>
-              </label>
+                  </select>
+                </label>
+                <FilterCreate
+                  label="領域"
+                  kind="areas"
+                  userId={userId}
+                  refresh={refresh}
+                  select={(id) => patch({ area: id, field: "" })}
+                />
+              </div>
+              <div>
+                <label>
+                  分野
+                  <select
+                    value={filters.field}
+                    onChange={(e) => patch({ field: e.target.value })}
+                  >
+                    <option value="">すべての分野</option>
+                    {data.fields
+                      .filter(
+                        (f) => !filters.area || f.area_id === filters.area,
+                      )
+                      .map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <FilterCreate
+                  key={filters.area}
+                  label="分野"
+                  kind="fields"
+                  userId={userId}
+                  areaId={filters.area}
+                  refresh={refresh}
+                  select={(id) => patch({ area: filters.area, field: id })}
+                />
+              </div>
               <label>
                 重要度
                 <select
@@ -296,20 +319,29 @@ export function NotebookApp({ userId }: { userId: string }) {
                   <option value="none">未設定</option>
                 </select>
               </label>
-              <label>
-                タグ
-                <select
-                  value={filters.tag}
-                  onChange={(e) => patch({ tag: e.target.value })}
-                >
-                  <option value="">すべて</option>
-                  {data.tags.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div>
+                <label>
+                  タグ
+                  <select
+                    value={filters.tag}
+                    onChange={(e) => patch({ tag: e.target.value })}
+                  >
+                    <option value="">すべて</option>
+                    {data.tags.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <FilterCreate
+                  label="タグ"
+                  kind="tags"
+                  userId={userId}
+                  refresh={refresh}
+                  select={(id) => patch({ tag: id })}
+                />
+              </div>
             </div>
             <div className="list-toolbar">
               <span>
