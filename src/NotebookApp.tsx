@@ -468,6 +468,8 @@ export function NotebookApp({ userId }: { userId: string }) {
       {quick && (
         <QuickAdd
           userId={userId}
+          data={data}
+          refresh={refresh}
           areaId={
             data.fields.find((field) => field.id === filters.field)?.area_id ??
             (filters.area && filters.area !== "none" ? filters.area : null)
