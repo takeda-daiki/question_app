@@ -1,12 +1,21 @@
 import { supabase } from "../lib/supabase";
 
 export type Card = { id: string; title: string; created_at: string };
+
+export type NewCardDetails = {
+  importance?: number | null;
+  effort?: "low" | "medium" | "high" | null;
+  body?: string | null;
+  conclusion?: string | null;
+};
+
 export async function addCard(
   userId: string,
   id: string,
   title: string,
   areaId: string | null = null,
   fieldId: string | null = null,
+  details?: NewCardDetails,
 ): Promise<Card> {
   const value = title.trim();
   if (!value) throw new Error("タイトルを入力してください。");
@@ -17,6 +26,14 @@ export async function addCard(
       user_id: userId,
       title: value,
       ...(areaId ? { area_id: areaId, field_id: fieldId } : {}),
+      ...(details
+        ? {
+            importance: details.importance ?? null,
+            effort: details.effort ?? null,
+            body: details.body?.trim() || null,
+            conclusion: details.conclusion?.trim() || null,
+          }
+        : {}),
     })
     .select("id,title,created_at")
     .single();
