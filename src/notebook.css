@@ -427,3 +427,67 @@ textarea:focus {
     width: calc(100% - 20px);
   }
 }
+
+/* 数式・画像添付 */
+.markdown .katex {
+  font-size: 1em;
+}
+
+.markdown-image {
+  display: block;
+  max-width: min(100%, 760px);
+  height: auto;
+  margin: 12px 0;
+  border-radius: 10px;
+  border: 1px solid #dce4d8;
+}
+
+.editor-grid > .image-upload-row {
+  grid-column: 1;
+}
+
+.editor-grid > .preview {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.image-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: -4px;
+}
+
+.image-upload-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-height: 38px;
+  margin: 0;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: #edf1e9;
+  color: #294c3e;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.image-upload-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .editor-grid > .image-upload-row,
+  .editor-grid > .preview {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
