@@ -296,35 +296,6 @@ textarea:focus {
 .notice:empty {
   display: none;
 }
-.inline-create {
-  margin-top: 6px;
-}
-.inline-create > .text-button {
-  font-size: 12px;
-  padding-left: 0;
-}
-.inline-create .row-actions {
-  margin-top: 8px;
-}
-.quick-classification {
-  margin: 18px 0;
-  border-top: 1px solid #dce4d8;
-  padding-top: 12px;
-}
-.quick-classification summary {
-  cursor: pointer;
-  font-size: 14px;
-  color: #256653;
-  padding: 8px 0;
-}
-.quick-classification .form-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-@media (max-width: 500px) {
-  .quick-classification .form-grid {
-    grid-template-columns: 1fr;
-  }
-}
 @media (max-width: 700px) {
   .detail-top {
     top: -20px;
