@@ -1,44 +1,32 @@
-# ビルド修正版
+# 今回の修正
 
-今回のGitHub Actionsエラーの主因は「ファイルの置き場所」です。
+## 変更内容
 
-正しい配置:
+1. 新規登録時の「疑問 / 解決済み」選択を削除
+   - 新規カードは常に「疑問」として登録します。
+   - 解決後にカード詳細画面から「解決済み」へ変更します。
+
+2. 既存カード詳細でも写真を追加可能
+   - 本文（問題側）に写真を追加できます。
+   - 結論（解答側）にも写真を追加できます。
+   - 写真追加後は「変更を保存」を押してください。
+
+3. 新規詳細追加の写真添付は維持
+   - 本文・結論の両方に写真を追加できます。
+
+## 上書きするファイル
+
 - src/cards/QuickAdd.tsx
-- src/cards/api.ts
-- src/components/Markdown.tsx
-- src/images/storage.ts
-- src/notebook.css
-- sql/add-image-storage.sql
-
-## 必ず削除するファイル
-
-GitHub上に以下が存在する場合は削除してください。
-
-- src/QuickAdd.tsx
-- src/Markdown.tsx
-
-これらは誤配置です。
-tsconfig.json が src 全体をコンパイルするため、アプリからimportしていなくても存在するだけでbuild対象となり、今回のような import error を起こします。
-
-## 適用方法
-
-1. このZIPをリポジトリのルートで展開し、同名ファイルを上書きする。
-2. `src/QuickAdd.tsx` と `src/Markdown.tsx` があれば削除する。
-3. 写真機能を使う場合、Supabase SQL Editorで `sql/add-image-storage.sql` を1回実行する。
-4. `pnpm build` を実行する。
-5. 成功したらcommit/pushする。
-
-## 今回含まれる機能
-
-- 詳細追加の本文（問題側）に写真を追加
-- 詳細追加の結論（解答側）にも写真を追加
-- 非公開Supabase Storageから署名URLで画像表示
-- 疑問 / 解決済みの選択
-- `$...$`, `$$...$$`, `\\[...\\]`, `align` / `align*` のプレビュー補助
-- TypeScriptのimplicit any対策
-
-※ `$a_2$` のように数式モード内に書いた場合に添え字として表示されます。
+- src/cards/CardDetail.tsx
 
 ## CSS
 
-`src/notebook-image-additions.css` の内容を `src/notebook.css` の末尾へ追加してください。
+`src/notebook-image-additions.css` の内容を `src/notebook.css` の末尾に追加してください。
+すでに同じ `.image-upload-*` / `.markdown-image` 定義がある場合は重複追加しなくて構いません。
+
+## 重要
+
+GitHub上に `src/storage.ts` がまだ残っている場合は削除してください。
+正しい画像Storageファイルは `src/images/storage.ts` です。
+
+写真機能を使うには、以前の `sql/add-image-storage.sql` をSupabase SQL Editorで一度実行している必要があります。

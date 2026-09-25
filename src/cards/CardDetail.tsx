@@ -10,6 +10,10 @@ import {
   type CardChanges,
 } from "../data/repository";
 import { Markdown } from "../components/Markdown";
+import {
+  cardImageMarkdown,
+  uploadCardImage,
+} from "../images/storage";
 import { ClassificationFields } from "./ClassificationFields";
 import { InlineCreate } from "../components/InlineCreate";
 
@@ -42,15 +46,18 @@ export function CardDetail({
   const [dirty, setDirty] = useState(false);
   const [saving, setBusy] = useState(false);
   const [classifying, setClassifying] = useState(false);
-  const busy = saving || classifying;
+  const [imageBusy, setImageBusy] = useState(false);
+  const busy = saving || classifying || imageBusy;
   const lock = useRef(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [related, setRelated] = useState("");
   const dialog = useRef<HTMLDialogElement>(null);
+
   useEffect(() => {
     dialog.current?.showModal();
   }, []);
+
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (dirty) {
@@ -61,17 +68,20 @@ export function CardDetail({
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
+
   function patch(values: Partial<CardChanges>) {
-    setDraft({ ...draft, ...values });
+    setDraft((current) => ({ ...current, ...values }));
     setDirty(true);
     setNotice("");
   }
+
   function mayLeave() {
     return (
       !busy &&
       (!dirty || window.confirm("未保存の変更を破棄して移動しますか？"))
     );
   }
+
   async function run(operation: () => Promise<unknown>, message: string) {
     if (lock.current) return;
     lock.current = true;
@@ -89,12 +99,34 @@ export function CardDetail({
       setBusy(false);
     }
   }
+
+  async function addImage(target: "body" | "conclusion", file: File) {
+    if (card.deleted_at || imageBusy) return;
+
+    setImageBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const path = await uploadCardImage(userId, card.id, file);
+      const markdown = cardImageMarkdown(path, file.name);
+      const current = String(draft[target] ?? "");
+      const next = `${current}${current && !current.endsWith("\n") ? "\n" : ""}${markdown}\n`;
+      patch({ [target]: next });
+      setNotice("写真を追加しました。変更を保存してください。");
+    } catch (e) {
+      setError(failure(e));
+    } finally {
+      setImageBusy(false);
+    }
+  }
+
   const links = data.links.filter(
     (l) => l.card_a_id === card.id || l.card_b_id === card.id,
   );
   const linkedIds = links.map((l) =>
     l.card_a_id === card.id ? l.card_b_id : l.card_a_id,
   );
+
   return (
     <dialog
       className="detail-dialog"
@@ -116,12 +148,15 @@ export function CardDetail({
           閉じる
         </button>
       </div>
+
       <h2>疑問の詳細</h2>
+
       {card.deleted_at && (
         <p className="notice">
           ゴミ箱のカードです。編集するには先に復元してください。
         </p>
       )}
+
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -131,11 +166,21 @@ export function CardDetail({
               title: draft.title.trim(),
             });
             setOriginal(saved);
+            setDraft({
+              title: saved.title,
+              body: saved.body ?? "",
+              conclusion: saved.conclusion ?? "",
+              area_id: saved.area_id ?? null,
+              field_id: saved.field_id ?? null,
+              importance: saved.importance ?? null,
+              effort: saved.effort ?? null,
+              status: saved.status ?? "unresolved",
+            });
             setDirty(false);
           }, "保存しました。");
         }}
       >
-        <fieldset disabled={busy || Boolean(card.deleted_at)}>
+        <fieldset disabled={saving || classifying || Boolean(card.deleted_at)}>
           <label htmlFor="detail-title">タイトル</label>
           <input
             id="detail-title"
@@ -143,6 +188,7 @@ export function CardDetail({
             value={draft.title}
             onChange={(e) => patch({ title: e.target.value })}
           />
+
           <div className="form-grid">
             <label>
               状態
@@ -156,6 +202,7 @@ export function CardDetail({
                 <option value="resolved">解決済み</option>
               </select>
             </label>
+
             <label>
               重要度
               <select
@@ -174,6 +221,7 @@ export function CardDetail({
                 ))}
               </select>
             </label>
+
             <label>
               労力
               <select
@@ -188,6 +236,7 @@ export function CardDetail({
                 <option value="high">高</option>
               </select>
             </label>
+
             <ClassificationFields
               data={data}
               userId={userId}
@@ -199,17 +248,41 @@ export function CardDetail({
               refresh={refresh}
             />
           </div>
+
           {(["body", "conclusion"] as const).map((key) => (
             <section key={key}>
               <label htmlFor={key}>{key === "body" ? "本文" : "結論"}</label>
+
               <div className="editor-grid">
-                <textarea
-                  id={key}
-                  rows={7}
-                  value={draft[key] ?? ""}
-                  placeholder="Markdownと $数式$ が使えます"
-                  onChange={(e) => patch({ [key]: e.target.value })}
-                />
+                <div>
+                  <textarea
+                    id={key}
+                    rows={7}
+                    value={draft[key] ?? ""}
+                    placeholder="Markdown、$数式$、$$別行数式$$、align環境が使えます"
+                    onChange={(e) => patch({ [key]: e.target.value })}
+                  />
+
+                  <div className="image-upload-row">
+                    <label className="image-upload-button">
+                      写真を追加
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        disabled={busy || Boolean(card.deleted_at)}
+                        onChange={(e) => {
+                          const file = e.currentTarget.files?.[0];
+                          if (file) void addImage(key, file);
+                          e.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                    {imageBusy && (
+                      <span className="muted">画像を送信中…</span>
+                    )}
+                  </div>
+                </div>
+
                 <div className="preview">
                   <small>プレビュー</small>
                   <Markdown text={draft[key] ?? ""} />
@@ -217,29 +290,37 @@ export function CardDetail({
               </div>
             </section>
           ))}
+
           <div className="dialog-actions">
             <span className="muted">
               {dirty ? "未保存の変更があります" : "保存済み"}
             </span>
-            <button className="primary" disabled={!draft.title.trim()}>
-              {busy ? "保存中…" : "変更を保存"}
+            <button
+              className="primary"
+              disabled={busy || !draft.title.trim()}
+            >
+              {saving ? "保存中…" : "変更を保存"}
             </button>
           </div>
         </fieldset>
       </form>
+
       <p role="status" className="notice">
         {notice}
       </p>
+
       {error && (
         <p role="alert" className="error">
           {error}
         </p>
       )}
+
       <section className="relations">
         <h3>タグ</h3>
         <small className="muted">
           タグと関連カードの変更は、その都度保存されます。
         </small>
+
         <div className="chips">
           {data.tags.map((tag) => (
             <label className="tag-choice" key={tag.id}>
@@ -260,6 +341,7 @@ export function CardDetail({
             </label>
           ))}
         </div>
+
         <InlineCreate
           label="タグ"
           disabled={busy || Boolean(card.deleted_at)}
@@ -271,13 +353,16 @@ export function CardDetail({
             setNotice("タグを作成して設定しました。");
           }}
         />
+
         <h3>関連カード</h3>
+
         {links.map((link) => {
           const other = data.cards.find(
             (c) =>
               c.id ===
               (link.card_a_id === card.id ? link.card_b_id : link.card_a_id),
           );
+
           return (
             <div className="related-row" key={link.id}>
               <button
@@ -290,6 +375,7 @@ export function CardDetail({
                 {other?.deleted_at ? "ゴミ箱：" : ""}
                 {other?.title ?? "カードが見つかりません"}
               </button>
+
               <button
                 className="text-button"
                 disabled={busy || !!card.deleted_at}
@@ -305,6 +391,7 @@ export function CardDetail({
             </div>
           );
         })}
+
         <div className="inline-form">
           <select
             aria-label="関連付けるカード"
@@ -326,6 +413,7 @@ export function CardDetail({
                 </option>
               ))}
           </select>
+
           <button
             className="secondary"
             disabled={!related || busy || !!card.deleted_at}
@@ -340,6 +428,7 @@ export function CardDetail({
           </button>
         </div>
       </section>
+
       <p className="muted">
         作成：{new Date(card.created_at).toLocaleString("ja-JP")}
         <br />

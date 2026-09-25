@@ -41,7 +41,6 @@ export function QuickAdd({
   const [selectedField, setField] = useState<string | null>(fieldId);
   const [selectedTags, setTags] = useState<string[]>([]);
   const [createdTags, setCreatedTags] = useState<Tag[]>([]);
-  const [status, setStatus] = useState<"unresolved" | "resolved">("unresolved");
   const [importance, setImportance] = useState<number | null>(null);
   const [effort, setEffort] = useState<"low" | "medium" | "high" | null>(null);
   const [body, setBody] = useState("");
@@ -81,7 +80,6 @@ export function QuickAdd({
       (detailed &&
         (Boolean(body.trim()) ||
           Boolean(conclusion.trim()) ||
-          status !== "unresolved" ||
           importance !== null ||
           effort !== null ||
           selectedTags.length > 0));
@@ -222,7 +220,7 @@ export function QuickAdd({
                   selectedArea,
                   selectedField,
                   detailed
-                    ? { status, importance, effort, body, conclusion }
+                    ? { importance, effort, body, conclusion }
                     : undefined,
                 );
 
@@ -252,7 +250,7 @@ export function QuickAdd({
         </h2>
         <p className="muted">
           {detailed
-            ? "整理に必要な情報をここで設定してから保存できます。タイトル以外は任意です。"
+            ? "疑問として登録します。整理に必要な情報はここで設定できます。タイトル以外は任意です。"
             : "まずはタイトルだけ。短い言葉で大丈夫。"}
         </p>
 
@@ -274,20 +272,6 @@ export function QuickAdd({
             {classification}
 
             <div className="form-grid">
-              <label>
-                状態
-                <select
-                  value={status}
-                  disabled={busy || creating || imageBusy || cardCreated}
-                  onChange={(event) =>
-                    setStatus(event.target.value as "unresolved" | "resolved")
-                  }
-                >
-                  <option value="unresolved">疑問</option>
-                  <option value="resolved">解決済み</option>
-                </select>
-              </label>
-
               <label>
                 重要度
                 <select

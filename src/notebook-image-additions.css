@@ -1,5 +1,5 @@
 
-/* 詳細追加: 画像アップロード */
+/* 写真追加 */
 .image-upload-row {
   display: flex;
   align-items: center;
@@ -34,14 +34,4 @@
   height: auto;
   margin: 12px 0;
   border-radius: 8px;
-}
-
-/* KaTeX側の添え字サイズをアプリの通常文字サイズで上書きしない */
-.markdown .katex {
-  font-size: 1em;
-}
-
-.markdown .katex .fontsize-ensurer,
-.markdown .katex .sizing {
-  font-size: inherit;
 }
