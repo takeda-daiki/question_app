@@ -1,0 +1,382 @@
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #ccd7d0;
+  border-radius: 8px;
+  padding: 10px;
+  background: white;
+}
+textarea {
+  resize: vertical;
+  line-height: 1.8;
+}
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+select:focus,
+textarea:focus {
+  outline: 2px solid #46856d;
+  outline-offset: 1px;
+}
+.notebook {
+  max-width: 1500px;
+}
+.sidebar nav {
+  display: grid;
+  gap: 4px;
+  margin-top: 18px;
+}
+.sidebar nav button {
+  text-align: left;
+  margin: 0;
+}
+.sidebar h3 {
+  font-size: 13px;
+  margin: 30px 0 10px;
+}
+.area-nav {
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  font-size: 13px;
+  padding: 8px;
+  overflow-wrap: anywhere;
+}
+.area-nav span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.tabs {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.tabs button {
+  background: #edf0e9;
+  color: #556b5d;
+  font-size: 13px;
+}
+.tabs button[aria-pressed="true"] {
+  background: #256653;
+  color: #fff;
+}
+.filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.filters label {
+  margin: 0;
+  font-size: 12px;
+}
+.filters .search-input {
+  grid-column: 1/-1;
+}
+.filters input,
+.filters select {
+  margin-top: 5px;
+}
+.group-title {
+  font-size: 14px;
+  color: #687b60;
+  margin: 25px 0 12px;
+}
+.card-content {
+  flex: 1;
+  min-width: 0;
+}
+.card-open {
+  display: block;
+  width: 100%;
+  background: transparent;
+  text-align: left;
+  padding: 0;
+  min-height: 32px;
+}
+.card-open:hover h2 {
+  color: #256653;
+  text-decoration: underline;
+}
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: #788478;
+  font-size: 11px;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 9px 0;
+}
+.chip {
+  background: #eaf0e5;
+  color: #53704e;
+  border-radius: 20px;
+  font-size: 11px;
+  padding: 4px 10px;
+  min-height: 30px;
+}
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.row-actions button {
+  font-size: 12px;
+  padding: 7px 10px;
+}
+.danger-text {
+  color: #9a3d32;
+  background: transparent;
+}
+.detail-dialog {
+  width: min(1100px, calc(100% - 32px));
+  max-height: 90dvh;
+}
+.detail-top {
+  position: sticky;
+  top: -32px;
+  z-index: 2;
+  background: white;
+  padding: 8px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.form-grid label {
+  font-size: 12px;
+}
+.form-grid select {
+  display: block;
+  margin-top: 6px;
+}
+.editor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.preview {
+  border: 1px solid #e3e7dd;
+  border-radius: 10px;
+  padding: 14px;
+  min-width: 0;
+  max-height: 450px;
+  overflow: auto;
+  background: #fbfcf8;
+}
+.preview > small {
+  color: #849080;
+}
+.markdown {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.markdown h1 {
+  font-size: 25px;
+}
+.markdown h2 {
+  font-size: 21px;
+}
+.markdown pre {
+  overflow: auto;
+  padding: 14px;
+  background: #edf0ea;
+  border-radius: 7px;
+  white-space: pre;
+}
+.markdown code {
+  font-family: monospace;
+}
+.markdown table {
+  border-collapse: collapse;
+  display: block;
+  overflow: auto;
+}
+.markdown td,
+.markdown th {
+  border: 1px solid #c8d2c3;
+  padding: 6px;
+}
+.markdown .katex-display {
+  overflow: auto;
+}
+.tag-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin: 9px 0;
+}
+.tag-choice input {
+  width: 18px;
+  height: 18px;
+}
+.relations {
+  border-top: 1px solid #dce4d8;
+  margin: 25px 0;
+  padding-top: 12px;
+}
+.related-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+.related-row button {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.inline-form {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.inline-form select {
+  flex: 1;
+}
+.inline-form button {
+  flex-shrink: 0;
+}
+.settings-form {
+  padding: 22px;
+  margin: 18px 0;
+}
+.settings-form input[type="color"] {
+  width: 65px;
+  height: 44px;
+  padding: 4px;
+}
+.settings-list {
+  list-style: none;
+  padding: 0;
+}
+.settings-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: white;
+  padding: 12px;
+  border-bottom: 1px solid #dce4d8;
+}
+.settings-list li > span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.graph {
+  height: 530px;
+  border: 1px solid #d1dccb;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #f1f5ed;
+}
+.mobile-nav {
+  display: none;
+}
+.notice:empty {
+  display: none;
+}
+@media (max-width: 700px) {
+  .detail-top {
+    top: -20px;
+  }
+  .filters {
+    grid-template-columns: 1fr 1fr;
+  }
+  .form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .editor-grid {
+    grid-template-columns: 1fr;
+  }
+  .detail-dialog {
+    padding: 20px;
+    max-height: 92dvh;
+  }
+  .detail-dialog .dialog-actions {
+    flex-wrap: wrap;
+  }
+  .preview {
+    max-height: 220px;
+  }
+  .mobile-nav {
+    display: flex;
+    position: fixed;
+    z-index: 5;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    border-top: 1px solid #d4dfce;
+    padding: 7px 5px max(7px, env(safe-area-inset-bottom));
+    justify-content: space-around;
+    gap: 2px;
+  }
+  .mobile-nav button {
+    background: transparent;
+    color: #466049;
+    padding: 7px 5px;
+    font-size: 11px;
+    min-width: 40px;
+  }
+  .mobile-nav .primary {
+    background: #256653;
+    color: white;
+    font-size: 22px;
+    padding: 0 12px;
+  }
+  .notebook .add-button {
+    position: static;
+    font-size: 12px;
+    padding: 9px;
+    box-shadow: none;
+  }
+  .notebook .section-heading {
+    gap: 8px;
+  }
+  .notebook .section-heading h1 {
+    font-size: 25px;
+  }
+  .notebook .cards-section {
+    padding: 25px 15px 90px;
+  }
+  .settings-list li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .graph {
+    height: 470px;
+  }
+  .inline-form {
+    flex-wrap: wrap;
+  }
+  .inline-form select {
+    flex-basis: 65%;
+  }
+  .tag-choice {
+    min-height: 35px;
+  }
+  footer {
+    padding-bottom: 90px;
+  }
+}

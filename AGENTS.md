@@ -185,3 +185,11 @@ A — B
 - 既存Supabaseプロジェクトを別アプリと共有している。qm_以外のテーブル、共通の認証設定、Site URLを不用意に変更しない。
 - データベース変更が必要な場合はSQLを履歴に残し、対象と既存データへの影響を説明する。Step 6には変更用SQLはなく、`sql/check-step5.sql` は読み取り専用。
 - 動作範囲と未実装機能は `docs/STEP6.md` と `SPEC.md` の実装状況に記録する。
+
+## 14. 要件実装版の構造
+
+- 最新の対応範囲は `docs/FEATURES.md`、既存DBの前提は `docs/DATABASE.md` を確認する。
+- `src/data/` は取得・更新・タグ・関連の保存、`src/cards/filter.ts` は検索と並び順、`src/cards/CardDetail.tsx` は編集、`src/settings/` は分類とバックアップ、`src/graph/` は関連グラフを担当する。
+- タグ・関連カードは各操作で保存し、カード本文等のフォームとは保存タイミングが異なる。失敗時に保存済みと誤表示しない。
+- カード更新の `updated_at` 条件を外さない。ゴミ箱からの完全削除には確認と対象の状態確認が必要。
+- Markdownに生HTML実行や未検証のHTML挿入を追加しない。TeXのtrustはfalseを保つ。
