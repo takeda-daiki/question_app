@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { addCard } from "./api";
 import { ClassificationFields } from "./ClassificationFields";
 import { InlineCreate } from "../components/InlineCreate";
+import { Markdown } from "../components/Markdown";
 import { ensureNamed, setTag } from "../data/repository";
 import type { Notebook, Tag } from "../data/types";
 
@@ -242,26 +243,40 @@ export function QuickAdd({
                 </select>
               </label>
             </div>
-            <label>
-              本文
-              <textarea
-                rows={7}
-                value={body}
-                disabled={busy || creating || cardCreated}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder="調べたいこと、背景、メモなど"
-              />
-            </label>
-            <label>
-              結論
-              <textarea
-                rows={5}
-                value={conclusion}
-                disabled={busy || creating || cardCreated}
-                onChange={(e) => setConclusion(e.target.value)}
-                placeholder="分かっている結論があれば入力"
-              />
-            </label>
+            <section>
+              <label htmlFor="detailed-body">本文</label>
+              <div className="editor-grid">
+                <textarea
+                  id="detailed-body"
+                  rows={7}
+                  value={body}
+                  disabled={busy || creating || cardCreated}
+                  onChange={(e) => setBody(e.target.value)}
+                  placeholder="Markdownと $数式$ が使えます"
+                />
+                <div className="preview">
+                  <small>プレビュー</small>
+                  <Markdown text={body} />
+                </div>
+              </div>
+            </section>
+            <section>
+              <label htmlFor="detailed-conclusion">結論</label>
+              <div className="editor-grid">
+                <textarea
+                  id="detailed-conclusion"
+                  rows={5}
+                  value={conclusion}
+                  disabled={busy || creating || cardCreated}
+                  onChange={(e) => setConclusion(e.target.value)}
+                  placeholder="Markdownと $数式$ が使えます"
+                />
+                <div className="preview">
+                  <small>プレビュー</small>
+                  <Markdown text={conclusion} />
+                </div>
+              </div>
+            </section>
           </div>
         ) : (
           <>
