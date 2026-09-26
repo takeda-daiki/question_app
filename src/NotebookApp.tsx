@@ -35,6 +35,7 @@ export function NotebookApp({ userId }: { userId: string }) {
   const [detailedAdd, setDetailedAdd] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const mutationLock = useRef(false);
   const [limit, setLimit] = useState(50);
   const active = useRef(true);
   const generation = useRef(0);
@@ -93,8 +94,13 @@ export function NotebookApp({ userId }: { userId: string }) {
     [data, filters, view],
   );
   const card = data.cards.find((c) => c.id === selected);
-  async function mutate(c: Card, operation: "trash" | "restore" | "delete") {
-    if (busy) return;
+  async function mutate(
+    c: Card,
+    operation: "trash" | "restore" | "delete" | "resolve" | "reopen",
+  ) {
+    if (busy || mutationLock.current) return;
+    if (c.deleted_at && (operation === "resolve" || operation === "reopen"))
+      return;
     if (
       operation === "delete" &&
       !window.confirm(
@@ -109,25 +115,42 @@ export function NotebookApp({ userId }: { userId: string }) {
       )
     )
       return;
+    mutationLock.current = true;
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       if (operation === "delete") await permanentlyDelete(userId, c);
-      else
+      else if (operation === "resolve" || operation === "reopen") {
+        const updated = await updateCard(userId, c, {
+          status: operation === "resolve" ? "resolved" : "unresolved",
+        });
+        setData((current) => ({
+          ...current,
+          cards: current.cards.map((item) =>
+            item.id === updated.id ? updated : item,
+          ),
+        }));
+      } else
         await updateCard(userId, c, {
           deleted_at: operation === "trash" ? new Date().toISOString() : null,
         });
       setNotice(
-        operation === "restore"
-          ? "復元しました。"
-          : operation === "trash"
-            ? "ゴミ箱へ移動しました。"
-            : "完全に削除しました。",
+        operation === "resolve"
+          ? "解決済みにしました。"
+          : operation === "reopen"
+            ? "疑問に戻しました。"
+            : operation === "restore"
+              ? "復元しました。"
+              : operation === "trash"
+                ? "ゴミ箱へ移動しました。"
+                : "完全に削除しました。",
       );
       await refresh();
     } catch (e) {
       setError(failure(e));
     } finally {
+      mutationLock.current = false;
       setBusy(false);
     }
   }
@@ -156,10 +179,7 @@ export function NotebookApp({ userId }: { userId: string }) {
           )}
         </nav>
         <h3>領域</h3>
-        <button
-          className="text-button"
-          onClick={() => showCardsForArea("")}
-        >
+        <button className="text-button" onClick={() => showCardsForArea("")}>
           すべての領域
         </button>
         {data.areas.map((a) => (
@@ -472,13 +492,31 @@ export function NotebookApp({ userId }: { userId: string }) {
                                 </button>
                               </>
                             ) : (
-                              <button
-                                className="text-button"
-                                disabled={busy}
-                                onClick={() => void mutate(c, "trash")}
-                              >
-                                ゴミ箱へ
-                              </button>
+                              <>
+                                <button
+                                  className="text-button"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    void mutate(
+                                      c,
+                                      c.status === "resolved"
+                                        ? "reopen"
+                                        : "resolve",
+                                    )
+                                  }
+                                >
+                                  {c.status === "resolved"
+                                    ? "疑問に戻す"
+                                    : "解決済みにする"}
+                                </button>
+                                <button
+                                  className="text-button"
+                                  disabled={busy}
+                                  onClick={() => void mutate(c, "trash")}
+                                >
+                                  ゴミ箱へ
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>

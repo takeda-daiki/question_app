@@ -11,9 +11,11 @@ import {
 } from "../data/repository";
 import { Markdown } from "../components/Markdown";
 import {
-  cardImageMarkdown,
-  uploadCardImage,
-} from "../images/storage";
+  ImageTextarea,
+  insertImageMarkdown,
+  type ImageSelection,
+} from "../components/ImageTextarea";
+import { cardImageMarkdown, uploadCardImage } from "../images/storage";
 import { ClassificationFields } from "./ClassificationFields";
 import { InlineCreate } from "../components/InlineCreate";
 
@@ -101,43 +103,59 @@ export function CardDetail({
   }
 
   async function saveWithStatus(status: Card["status"]) {
-    await run(async () => {
-      const saved = await updateCard(userId, original, {
-        ...draft,
-        title: draft.title.trim(),
-        status,
-      });
-      setOriginal(saved);
-      setDraft({
-        title: saved.title,
-        body: saved.body ?? "",
-        conclusion: saved.conclusion ?? "",
-        area_id: saved.area_id ?? null,
-        field_id: saved.field_id ?? null,
-        importance: saved.importance ?? null,
-        effort: saved.effort ?? null,
-        status: saved.status ?? "unresolved",
-      });
-      setDirty(false);
-    }, status === "resolved" ? "解決済みにしました。" : "疑問に戻しました。");
+    await run(
+      async () => {
+        const saved = await updateCard(userId, original, {
+          ...draft,
+          title: draft.title.trim(),
+          status,
+        });
+        setOriginal(saved);
+        setDraft({
+          title: saved.title,
+          body: saved.body ?? "",
+          conclusion: saved.conclusion ?? "",
+          area_id: saved.area_id ?? null,
+          field_id: saved.field_id ?? null,
+          importance: saved.importance ?? null,
+          effort: saved.effort ?? null,
+          status: saved.status ?? "unresolved",
+        });
+        setDirty(false);
+      },
+      status === "resolved" ? "解決済みにしました。" : "疑問に戻しました。",
+    );
   }
 
-  async function addImage(target: "body" | "conclusion", file: File) {
-    if (card.deleted_at || imageBusy) return;
-
+  async function addImages(
+    target: "body" | "conclusion",
+    files: File[],
+    selection: ImageSelection,
+  ) {
+    if (card.deleted_at || busy || lock.current) return;
+    lock.current = true;
     setImageBusy(true);
     setError("");
     setNotice("");
     try {
-      const path = await uploadCardImage(userId, card.id, file);
-      const markdown = cardImageMarkdown(path, file.name);
-      const current = String(draft[target] ?? "");
-      const next = `${current}${current && !current.endsWith("\n") ? "\n" : ""}${markdown}\n`;
-      patch({ [target]: next });
+      let current = String(draft[target] ?? "");
+      for (const file of files) {
+        const path = await uploadCardImage(userId, card.id, file);
+        const next = insertImageMarkdown(
+          current,
+          cardImageMarkdown(path, file.name),
+          selection,
+        );
+        const cursor = next.length - (current.length - selection.end);
+        selection = { start: cursor, end: cursor };
+        current = next;
+        patch({ [target]: next });
+      }
       setNotice("写真を追加しました。変更を保存してください。");
     } catch (e) {
       setError(failure(e));
     } finally {
+      lock.current = false;
       setImageBusy(false);
     }
   }
@@ -219,7 +237,7 @@ export function CardDetail({
           }, "保存しました。");
         }}
       >
-        <fieldset disabled={saving || classifying || Boolean(card.deleted_at)}>
+        <fieldset disabled={busy || Boolean(card.deleted_at)}>
           <label htmlFor="detail-title">タイトル</label>
           <input
             id="detail-title"
@@ -281,31 +299,20 @@ export function CardDetail({
 
               <div className="editor-grid">
                 <div>
-                  <textarea
+                  <ImageTextarea
                     id={key}
                     rows={7}
                     value={draft[key] ?? ""}
                     placeholder="Markdown、$数式$、$$別行数式$$、align環境が使えます"
                     onChange={(e) => patch({ [key]: e.target.value })}
+                    disabled={busy || Boolean(card.deleted_at)}
+                    onImages={(files, selection) =>
+                      void addImages(key, files, selection)
+                    }
                   />
 
                   <div className="image-upload-row">
-                    <label className="image-upload-button">
-                      写真を追加
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/gif"
-                        disabled={busy || Boolean(card.deleted_at)}
-                        onChange={(e) => {
-                          const file = e.currentTarget.files?.[0];
-                          if (file) void addImage(key, file);
-                          e.currentTarget.value = "";
-                        }}
-                      />
-                    </label>
-                    {imageBusy && (
-                      <span className="muted">画像を送信中…</span>
-                    )}
+                    {imageBusy && <span className="muted">画像を送信中…</span>}
                   </div>
                 </div>
 
@@ -321,10 +328,7 @@ export function CardDetail({
             <span className="muted">
               {dirty ? "未保存の変更があります" : "保存済み"}
             </span>
-            <button
-              className="primary"
-              disabled={busy || !draft.title.trim()}
-            >
+            <button className="primary" disabled={busy || !draft.title.trim()}>
               {saving ? "保存中…" : "変更を保存"}
             </button>
           </div>

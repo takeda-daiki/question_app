@@ -1,4 +1,261 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type Locator } from "@playwright/test";
+import { normalizeMath } from "../src/components/normalizeMath";
+
+test("math normalization preserves code and does not double wrap align", () => {
+  const code = "```tex\n$$x$$\n\\begin{align}a&=b\\end{align}\n```\n`$$x$$`";
+  expect(normalizeMath(code)).toBe(code);
+  expect(normalizeMath("$x$")).toBe("$x$");
+  expect(normalizeMath("before $$x$$ after")).toBe(
+    "before \n\n$$\nx\n$$\n\n after",
+  );
+  const align = "\\begin{align}a&=b\\\\c&=d\\end{align}";
+  expect(normalizeMath(`$$${align}$$`)).toBe(`\n\n$$\n${align}\n$$\n\n`);
+});
+
+test("display math and align render as separate multiline equations", async ({
+  page,
+}, testInfo) => {
+  const backend = await mock(page);
+  seed(backend, "math", "数式テスト");
+  await login(page);
+  await page.getByRole("button", { name: "数式テスト", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const value =
+    "文中 $x^2$ と別行 $$y^2$$\n\n$$$$z^2$$$$\n\n\\[w^2\\]\n\n\\begin{align}\na &= b+c \\\\\nd &= e+f\n\\end{align}\n\n$$\\begin{align*}p&=q\\\\r&=s\\end{align*}$$\n\n`$$code$$`";
+  await dialog.getByLabel("本文", { exact: true }).fill(value);
+  await expect(dialog.locator(".katex-display")).toHaveCount(5);
+  await expect(dialog.locator(".katex-error")).toHaveCount(0);
+  await expect(dialog.locator(".katex-display .mtable")).toHaveCount(2);
+  await expect(dialog.locator("code")).toHaveText("$$code$$");
+  await dialog.getByRole("button", { name: "変更を保存" }).click();
+  await expect(
+    dialog.getByText("保存しました。", { exact: true }),
+  ).toBeVisible();
+  expect(backend.cards[0].body).toBe(value);
+  await dialog
+    .locator(".markdown")
+    .first()
+    .screenshot({ path: testInfo.outputPath("math-preview.png") });
+  await page.screenshot({
+    path: testInfo.outputPath("math.png"),
+    fullPage: true,
+  });
+});
+
+async function mockImages(page: Page) {
+  const uploads: string[] = [];
+  let fail = false;
+  await page.route("**/storage/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.includes("/object/sign/")) {
+      return route.fulfill({
+        json: {
+          signedURL: "/object/authenticated/qm-card-images/test.png?token=test",
+        },
+      });
+    }
+    if (request.method() === "POST") {
+      if (fail)
+        return route.fulfill({
+          status: 403,
+          json: {
+            message: "画像の保存に失敗しました",
+            error: "Denied",
+            statusCode: "403",
+          },
+        });
+      uploads.push(path);
+      return route.fulfill({ json: { Key: path, Id: "test-image" } });
+    }
+    return route.fulfill({
+      contentType: "image/png",
+      body: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    });
+  });
+  return {
+    uploads,
+    deny: () => {
+      fail = true;
+    },
+  };
+}
+
+async function pasteImage(input: Locator, start: number, end = start) {
+  await input.evaluate(
+    (element, range) => {
+      const textarea = element as HTMLTextAreaElement;
+      textarea.focus();
+      textarea.setSelectionRange(range.start, range.end);
+      const clipboardData = new DataTransfer();
+      clipboardData.items.add(
+        new File([new Uint8Array([137, 80, 78, 71])], "写真.png", {
+          type: "image/png",
+        }),
+      );
+      textarea.dispatchEvent(
+        new ClipboardEvent("paste", {
+          clipboardData,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    },
+    { start, end },
+  );
+}
+
+test("paste images into existing body and conclusion without losing text", async ({
+  page,
+}) => {
+  const backend = await mock(page);
+  const images = await mockImages(page);
+  seed(backend, "image-card", "写真テスト");
+  await login(page);
+  await page.getByRole("button", { name: "写真テスト", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator('input[type="file"]')).toHaveCount(0);
+  const textPasteAllowed = await dialog
+    .getByLabel("本文", { exact: true })
+    .evaluate((element) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", "普通の文章");
+      return element.dispatchEvent(
+        new ClipboardEvent("paste", {
+          clipboardData,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+  expect(textPasteAllowed).toBe(true);
+  for (const label of ["本文", "結論"]) {
+    const input = dialog.getByLabel(label, { exact: true });
+    await input.fill("前の文\n後の文");
+    await pasteImage(input, 4);
+    await expect(input).toHaveValue(
+      /前の文\n!\[写真.png\]\(qm-image:.*\)\n後の文/,
+    );
+  }
+  await expect(dialog.locator("img.markdown-image")).toHaveCount(2);
+  await expect
+    .poll(() =>
+      dialog
+        .locator("img.markdown-image")
+        .first()
+        .evaluate((img) => (img as HTMLImageElement).naturalWidth),
+    )
+    .toBe(1);
+  expect(images.uploads).toHaveLength(2);
+  await dialog.getByRole("button", { name: "変更を保存" }).click();
+  await expect(
+    dialog.getByText("保存しました。", { exact: true }),
+  ).toBeVisible();
+  const saved = backend.cards[0].body;
+  images.deny();
+  await pasteImage(dialog.getByLabel("本文", { exact: true }), 0);
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await expect(dialog.getByLabel("本文", { exact: true })).toHaveValue(saved);
+  await expect(
+    dialog.getByRole("button", { name: "変更を保存" }),
+  ).toBeEnabled();
+  await dialog.getByRole("button", { name: "閉じる", exact: true }).click();
+  await page.getByRole("button", { name: "写真テスト", exact: true }).click();
+  await expect(
+    page.getByRole("dialog").locator("img.markdown-image"),
+  ).toHaveCount(2);
+});
+
+test("paste image into a new detailed card", async ({ page }) => {
+  const backend = await mock(page);
+  const images = await mockImages(page);
+  await login(page);
+  await page
+    .getByRole("button", { name: "＋ 詳細を設定して疑問を追加", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("疑問のタイトル").fill("新規画像");
+  await dialog.getByLabel("本文（問題側）", { exact: true }).fill("説明");
+  await pasteImage(dialog.getByLabel("本文（問題側）", { exact: true }), 2);
+  await expect(dialog.locator("img.markdown-image")).toBeVisible();
+  await dialog.getByRole("button", { name: "保存する", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "新規画像", exact: true }),
+  ).toBeVisible();
+  expect(backend.cards[0].body).toContain("qm-image:");
+  expect(images.uploads[0]).toContain(`/${userId}/${backend.cards[0].id}/`);
+});
+
+test("resolve and reopen cards from the list without opening details", async ({
+  page,
+}, testInfo) => {
+  const backend = await mock(page);
+  seed(backend, "toggle", "一覧で解決");
+  backend.cards[0].body = "本文を保つ";
+  await login(page);
+  await page
+    .getByRole("button", { name: "解決済みにする", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "一覧で解決", exact: true }),
+  ).toHaveCount(0);
+  expect(backend.cards[0].status).toBe("resolved");
+  expect(backend.cards[0].resolved_at).toBeTruthy();
+  await page.getByRole("button", { name: "解決済み", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "疑問に戻す", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("list-status.png"),
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "疑問に戻す", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "一覧で解決", exact: true }),
+  ).toHaveCount(0);
+  expect(backend.cards[0].status).toBe("unresolved");
+  expect(backend.cards[0].resolved_at).toBeNull();
+  expect(backend.cards[0].body).toBe("本文を保つ");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("list status change rejects stale data and permits retry after reload", async ({
+  page,
+}) => {
+  const backend = await mock(page);
+  seed(backend, "conflict", "同時更新");
+  await login(page);
+  await expect(
+    page.getByRole("button", { name: "同時更新", exact: true }),
+  ).toBeVisible();
+  backend.cards[0].updated_at = "2026-09-26T12:00:00Z";
+  backend.cards[0].body = "別の画面で保存した本文";
+  await page
+    .getByRole("button", { name: "解決済みにする", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "別の画面で変更された可能性",
+  );
+  expect(backend.cards[0].status).toBe("unresolved");
+  await expect(
+    page.getByRole("button", { name: "同時更新", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "再読み込み", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "再読み込み", exact: true }),
+  ).toBeEnabled();
+  await page
+    .getByRole("button", { name: "解決済みにする", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "同時更新", exact: true }),
+  ).toHaveCount(0);
+  expect(backend.cards[0].body).toBe("別の画面で保存した本文");
+});
 
 // All browser tests are local; reject third-party resources rather than fetch them.
 test.beforeEach(async ({ page }) => {
@@ -203,7 +460,7 @@ test("login, create plain text title, reload and logout", async ({
   await login(page);
   await expect(page.getByText("最初の疑問を残しましょう")).toBeVisible();
   await page
-    .getByRole("button", { name: "＋ 疑問を追加", exact: true })
+    .getByRole("button", { name: "＋ クイック追加", exact: true })
     .click();
   await expect(page.getByLabel("疑問のタイトル")).toBeFocused();
   await page.getByLabel("疑問のタイトル").fill("   ");
@@ -251,7 +508,7 @@ test("lost save response retains draft and retries without duplicate", async ({
   const backend = await mock(page, { loseResponse: true });
   await login(page);
   await page
-    .getByRole("button", { name: "＋ 疑問を追加", exact: true })
+    .getByRole("button", { name: "＋ クイック追加", exact: true })
     .click();
   await page.getByLabel("疑問のタイトル").fill("再試行する疑問");
   await page.getByRole("button", { name: "保存する" }).click();
@@ -411,8 +668,8 @@ test("edit, live math preview, classification, tag, resolve, trash and restore",
     fullPage: true,
   });
   await dialog
-    .getByRole("combobox", { name: "状態", exact: true })
-    .selectOption("resolved");
+    .getByRole("button", { name: "解決済みにする", exact: true })
+    .click();
   await dialog.getByRole("button", { name: "変更を保存" }).click();
   await expect(
     dialog.getByText("保存しました。", { exact: true }),
@@ -479,7 +736,7 @@ test("related cards are bidirectional, graph opens details, export includes rela
   await dialog.getByRole("button", { name: "閉じる", exact: true }).click();
   await go(page, testInfo.project.name === "mobile" ? "グラフ" : "関連グラフ");
   await page
-    .getByRole("combobox", { name: "領域", exact: true })
+    .getByRole("combobox", { name: "表示する領域", exact: true })
     .selectOption("area-one");
   await expect(page.locator(".react-flow__node")).toHaveCount(2);
   await expect(page.locator(".react-flow__edge")).toHaveCount(1);
@@ -563,6 +820,7 @@ test("search and backup include rows beyond first database page", async ({
   const backend = await mock(page);
   for (let i = 0; i < 503; i++) seed(backend, `card-${i}`, `疑問${i}`);
   await login(page);
+  await go(page, "検索");
   await page.getByLabel("キーワード").fill("疑問502");
   await expect(
     page.getByRole("button", { name: "疑問502", exact: true }),
@@ -605,7 +863,7 @@ test("quick add can keep draft when closing is cancelled", async ({ page }) => {
   const backend = await mock(page);
   await login(page);
   await page
-    .getByRole("button", { name: "＋ 疑問を追加", exact: true })
+    .getByRole("button", { name: "＋ クイック追加", exact: true })
     .click();
   await page.getByLabel("疑問のタイトル").fill("失いたくない疑問");
   page.once("dialog", (d) => d.dismiss());
@@ -637,11 +895,12 @@ test("quick add inherits the selected field and its area", async ({
     sort_order: 0,
   });
   await login(page);
+  await go(page, "検索");
   await page
     .getByRole("combobox", { name: "分野", exact: true })
     .selectOption("f");
   await page
-    .getByRole("button", { name: "＋ 疑問を追加", exact: true })
+    .getByRole("button", { name: "＋ クイック追加", exact: true })
     .click();
   await page.getByLabel("疑問のタイトル").fill("光はなぜ曲がる？");
   await page.getByRole("button", { name: "保存する", exact: true }).click();
@@ -672,7 +931,7 @@ test("create classifications inline before saving a question", async ({
   const backend = await mock(page);
   await login(page);
   await page
-    .getByRole("button", { name: "＋ 疑問を追加", exact: true })
+    .getByRole("button", { name: "＋ クイック追加", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("疑問のタイトル").fill("研究したい疑問");
@@ -769,56 +1028,50 @@ test("inline creation reuses names and retains the detail draft", async ({
   });
 });
 
-test("create classifications directly from list filters", async ({
+test("search classifications filter existing cards without modifying them", async ({
   page,
-}, testInfo) => {
+}) => {
   const backend = await mock(page);
-  seed(backend, "existing", "既存の疑問");
-  await login(page);
-  const filters = page.locator(".filters");
-  await expect(
-    filters.getByRole("button", { name: "＋ 分野を新規作成", exact: true }),
-  ).toBeDisabled();
-  for (const [label, name, table] of [
-    ["領域", "研究", "qm_areas"],
-    ["分野", "統計", "qm_fields"],
-    ["タグ", "論文", "qm_tags"],
-  ]) {
-    await filters
-      .getByRole("button", { name: `＋ ${label}を新規作成`, exact: true })
-      .click();
-    await filters.getByLabel(`新しい${label}名`, { exact: true }).fill(name);
-    await filters
-      .getByRole("button", { name: `${label}を作成して選択`, exact: true })
-      .click();
-    await expect(
-      filters.getByRole("combobox", { name: label, exact: true }),
-    ).toHaveValue(backend.tables[table][0].id);
-  }
-  expect(backend.tables.qm_fields[0].area_id).toBe(
-    backend.tables.qm_areas[0].id,
-  );
-  expect(backend.cards).toHaveLength(1);
-  expect(backend.cards[0].area_id).toBeNull();
-  expect(backend.tables.qm_card_tags).toHaveLength(0);
-  await filters
-    .getByRole("combobox", { name: "領域", exact: true })
-    .selectOption("none");
-  await expect(
-    filters.getByRole("combobox", { name: "分野", exact: true }),
-  ).toHaveValue("");
-  await expect(
-    filters.getByRole("button", { name: "＋ 分野を新規作成", exact: true }),
-  ).toBeDisabled();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-  await page.screenshot({
-    path: testInfo.outputPath("list-create.png"),
-    fullPage: true,
+  backend.tables.qm_areas.push({
+    id: "a",
+    user_id: userId,
+    name: "研究",
+    sort_order: 0,
   });
+  backend.tables.qm_fields.push({
+    id: "f",
+    user_id: userId,
+    area_id: "a",
+    name: "統計",
+    sort_order: 0,
+  });
+  backend.tables.qm_tags.push({ id: "t", user_id: userId, name: "論文" });
+  seed(backend, "matching", "対象の疑問", { area_id: "a", field_id: "f" });
+  seed(backend, "other", "別の疑問");
+  backend.tables.qm_card_tags.push({
+    user_id: userId,
+    card_id: "matching",
+    tag_id: "t",
+  });
+  const before = JSON.stringify(backend.cards);
+  await login(page);
+  await go(page, "検索");
+  for (const [label, id] of [
+    ["領域", "a"],
+    ["分野", "f"],
+    ["タグ", "t"],
+  ]) {
+    await page
+      .getByRole("combobox", { name: label, exact: true })
+      .selectOption(id);
+  }
+  await expect(
+    page.getByRole("button", { name: "対象の疑問", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "別の疑問", exact: true }),
+  ).toHaveCount(0);
+  expect(JSON.stringify(backend.cards)).toBe(before);
 });
 
 test("inline tag save retry does not duplicate the question", async ({
@@ -828,7 +1081,7 @@ test("inline tag save retry does not duplicate the question", async ({
   backend.tables.qm_tags.push({ id: "tag", user_id: userId, name: "タグ" });
   await login(page);
   await page
-    .getByRole("button", { name: "＋ 疑問を追加", exact: true })
+    .getByRole("button", { name: "＋ クイック追加", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("疑問のタイトル").fill("一度だけ保存");

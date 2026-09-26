@@ -4,6 +4,11 @@ import { ClassificationFields } from "./ClassificationFields";
 import { InlineCreate } from "../components/InlineCreate";
 import { Markdown } from "../components/Markdown";
 import {
+  ImageTextarea,
+  insertImageMarkdown,
+  type ImageSelection,
+} from "../components/ImageTextarea";
+import {
   cardImageMarkdown,
   deleteCardImages,
   uploadCardImage,
@@ -52,7 +57,9 @@ export function QuickAdd({
   const savedId = useRef<string | null>(null);
 
   const tags = [
-    ...new Map([...data.tags, ...createdTags].map((tag) => [tag.id, tag])).values(),
+    ...new Map(
+      [...data.tags, ...createdTags].map((tag) => [tag.id, tag]),
+    ).values(),
   ];
 
   const dialog = useRef<HTMLDialogElement>(null);
@@ -103,24 +110,42 @@ export function QuickAdd({
     close();
   }
 
-  async function addImage(target: "body" | "conclusion", file: File) {
-    if (!detailed || cardCreated) return;
-
+  async function addImages(
+    target: "body" | "conclusion",
+    files: File[],
+    selection: ImageSelection,
+  ) {
+    if (
+      !detailed ||
+      cardCreated ||
+      busy ||
+      creating ||
+      imageBusy ||
+      lock.current
+    )
+      return;
+    lock.current = true;
     setImageBusy(true);
     setError("");
     try {
       const id = attempt.current?.id ?? crypto.randomUUID();
       if (!attempt.current) attempt.current = { id, title: title.trim() };
 
-      const path = await uploadCardImage(userId, id, file);
-      setUploadedImages((prev) => [...prev, path]);
-
-      const markdown = cardImageMarkdown(path, file.name);
-      const append = (current: string) =>
-        `${current}${current && !current.endsWith("\n") ? "\n" : ""}${markdown}\n`;
-
-      if (target === "body") setBody(append);
-      else setConclusion(append);
+      let current = target === "body" ? body : conclusion;
+      for (const file of files) {
+        const path = await uploadCardImage(userId, id, file);
+        setUploadedImages((prev) => [...prev, path]);
+        const next = insertImageMarkdown(
+          current,
+          cardImageMarkdown(path, file.name),
+          selection,
+        );
+        const cursor = next.length - (current.length - selection.end);
+        selection = { start: cursor, end: cursor };
+        current = next;
+        if (target === "body") setBody(next);
+        else setConclusion(next);
+      }
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -128,6 +153,7 @@ export function QuickAdd({
           : "画像のアップロードに失敗しました。",
       );
     } finally {
+      lock.current = false;
       setImageBusy(false);
     }
   }
@@ -246,7 +272,9 @@ export function QuickAdd({
       >
         <span className="eyebrow">A NEW QUESTION</span>
         <h2>
-          {detailed ? "詳細を設定して疑問を追加" : "いま、気になっていることは？"}
+          {detailed
+            ? "詳細を設定して疑問を追加"
+            : "いま、気になっていることは？"}
         </h2>
         <p className="muted">
           {detailed
@@ -298,10 +326,7 @@ export function QuickAdd({
                   onChange={(event) =>
                     setEffort(
                       (event.target.value || null) as
-                        | "low"
-                        | "medium"
-                        | "high"
-                        | null,
+                        "low" | "medium" | "high" | null,
                     )
                   }
                 >
@@ -317,28 +342,20 @@ export function QuickAdd({
               <label htmlFor="detailed-body">本文（問題側）</label>
               <div className="editor-grid">
                 <div>
-                  <textarea
+                  <ImageTextarea
                     id="detailed-body"
                     rows={8}
                     value={body}
                     disabled={busy || creating || imageBusy || cardCreated}
                     onChange={(event) => setBody(event.target.value)}
-                    placeholder={"Markdown、$数式$、$$別行数式$$、\\begin{align}...\\end{align} が使えます"}
+                    onImages={(files, selection) =>
+                      void addImages("body", files, selection)
+                    }
+                    placeholder={
+                      "Markdown、$数式$、$$別行数式$$、\\begin{align}...\\end{align} が使えます"
+                    }
                   />
                   <div className="image-upload-row">
-                    <label className="image-upload-button">
-                      写真を追加
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/gif"
-                        disabled={busy || creating || imageBusy || cardCreated}
-                        onChange={(event) => {
-                          const file = event.currentTarget.files?.[0];
-                          if (file) void addImage("body", file);
-                          event.currentTarget.value = "";
-                        }}
-                      />
-                    </label>
                     {imageBusy && <span className="muted">画像を送信中…</span>}
                   </div>
                 </div>
@@ -353,28 +370,20 @@ export function QuickAdd({
               <label htmlFor="detailed-conclusion">結論（解答側）</label>
               <div className="editor-grid">
                 <div>
-                  <textarea
+                  <ImageTextarea
                     id="detailed-conclusion"
                     rows={8}
                     value={conclusion}
                     disabled={busy || creating || imageBusy || cardCreated}
                     onChange={(event) => setConclusion(event.target.value)}
-                    placeholder={"Markdown、$数式$、$$別行数式$$、\\begin{align}...\\end{align} が使えます"}
+                    onImages={(files, selection) =>
+                      void addImages("conclusion", files, selection)
+                    }
+                    placeholder={
+                      "Markdown、$数式$、$$別行数式$$、\\begin{align}...\\end{align} が使えます"
+                    }
                   />
                   <div className="image-upload-row">
-                    <label className="image-upload-button">
-                      写真を追加
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/gif"
-                        disabled={busy || creating || imageBusy || cardCreated}
-                        onChange={(event) => {
-                          const file = event.currentTarget.files?.[0];
-                          if (file) void addImage("conclusion", file);
-                          event.currentTarget.value = "";
-                        }}
-                      />
-                    </label>
                     {imageBusy && <span className="muted">画像を送信中…</span>}
                   </div>
                 </div>
